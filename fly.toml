@@ -1,9 +1,15 @@
 # Super Sinky - https://fly.io/docs/reference/configuration/
 #
-# Deliberately pinned to a SINGLE always-on machine. Lobbies, ships and the
-# 30Hz game loop live in process memory, so a second instance would strand
-# players in the same lobby on different servers, and stopping the machine
-# would drop every match in progress.
+# This app MUST run exactly ONE machine. Lobbies, ships and the 30Hz game loop
+# live in process memory, so a second instance strands players in the same
+# lobby on different servers, and a stopped machine drops matches in progress.
+#
+# NOTE: min_machines_running below governs auto-stop, NOT machine count. Fly
+# adds a second machine for HA on a first deploy unless you pass --ha=false:
+#
+#   fly deploy --ha=false
+#
+# Check with `fly machines list`; correct with `fly scale count 1`.
 
 app = 'super-sinky'
 primary_region = 'arn'
