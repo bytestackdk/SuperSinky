@@ -1,0 +1,19 @@
+{
+  "name": "super-sinky",
+  "version": "1.0.0",
+  "description": "Super Sinky - multiplayer age-of-sail naval warfare in the browser",
+  "main": "server/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node test/run.js",
+    "test:mechanics": "node test/run.js mechanics",
+    "test:client": "node test/run.js client",
+    "test:e2e": "node test/run.js e2e"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {},
+  "license": "MIT"
+}

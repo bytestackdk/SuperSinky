@@ -1,0 +1,33 @@
+# Super Sinky - https://fly.io/docs/reference/configuration/
+#
+# Deliberately pinned to a SINGLE always-on machine. Lobbies, ships and the
+# 30Hz game loop live in process memory, so a second instance would strand
+# players in the same lobby on different servers, and stopping the machine
+# would drop every match in progress.
+
+app = 'super-sinky'
+primary_region = 'arn'
+
+[build]
+
+[env]
+  PORT = '3000'
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['app']
+
+  [[http_service.checks]]
+    grace_period = '10s'
+    interval = '15s'
+    method = 'GET'
+    timeout = '2s'
+    path = '/healthz'
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '256mb'

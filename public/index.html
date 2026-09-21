@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Super Sinky</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23134a6b'/%3E%3Cpath d='M6 21h20l-3 5H9z' fill='%238a5a33'/%3E%3Cpath d='M16 3l7 16H9z' fill='%23f2ead6'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<!-- A battle plays behind the menu and lobby screens. -->
+<canvas id="menuScene" class="menu-scene"></canvas>
+<div class="menu-scrim"></div>
+
+<!-- ============================ MENU ============================ -->
+<section id="screen-menu" class="screen active">
+  <div class="menu-wrap">
+    <header class="brand">
+      <h1>Super&nbsp;Sinky</h1>
+      <p class="tagline">Broadsides, wind and wooden hulls.</p>
+    </header>
+
+    <div class="panel name-panel">
+      <label for="playerName">Captain's name</label>
+      <div class="row">
+        <input id="playerName" type="text" maxlength="16" placeholder="Sailor" autocomplete="off" spellcheck="false">
+        <button id="saveName" class="btn ghost">Save</button>
+      </div>
+      <p class="hint">Remembered on this device.</p>
+    </div>
+
+    <div class="panel lobbies-panel">
+      <div class="panel-head">
+        <h2>Lobbies</h2>
+        <button id="refreshLobbies" class="btn ghost small">Refresh</button>
+      </div>
+      <div id="lobbyList" class="lobby-list">
+        <p class="empty">Hailing the harbour master...</p>
+      </div>
+    </div>
+
+    <div class="panel create-panel">
+      <div class="panel-head"><h2>Create a lobby</h2></div>
+      <div class="form-grid">
+        <label for="lobbyName">Name</label>
+        <input id="lobbyName" type="text" maxlength="24" placeholder="The Salty Dog" autocomplete="off">
+
+        <label for="lobbyPassword">Password</label>
+        <input id="lobbyPassword" type="password" maxlength="32" placeholder="optional" autocomplete="new-password">
+
+        <label for="lobbyMode">Game type</label>
+        <select id="lobbyMode">
+          <option value="dm">Death match &mdash; every ship for itself</option>
+          <option value="tdm">Team death match &mdash; two fleets</option>
+        </select>
+      </div>
+      <button id="createLobby" class="btn primary wide">Create lobby</button>
+    </div>
+
+    <p class="version">A browser game of age-of-sail gunnery.</p>
+  </div>
+</section>
+
+<!-- ============================ LOBBY ============================ -->
+<section id="screen-lobby" class="screen">
+  <div class="menu-wrap">
+    <header class="lobby-head">
+      <div>
+        <h1 id="lobbyTitle">Lobby</h1>
+        <p id="lobbySub" class="tagline"></p>
+      </div>
+      <button id="leaveLobby" class="btn ghost">Leave</button>
+    </header>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Crew <span id="crewCount" class="muted"></span></h2>
+        <div class="bot-controls" id="ffaBotControls">
+          <button id="removeBot" class="btn ghost small">&minus; Bot</button>
+          <button id="addBot" class="btn ghost small">+ Bot</button>
+        </div>
+      </div>
+      <div id="teamsWrap"></div>
+      <p id="botNote" class="hint"></p>
+    </div>
+
+    <button id="startGame" class="btn primary wide">Weigh anchor</button>
+    <button id="endMatch" class="btn danger wide hidden">End the match</button>
+    <p id="startHint" class="hint center"></p>
+  </div>
+</section>
+
+<!-- ============================ GAME ============================ -->
+<section id="screen-game" class="screen game">
+  <canvas id="view"></canvas>
+
+  <div id="hud" class="hud">
+    <!-- top left: scoreboard -->
+    <div class="hud-scores" id="scoreboard"></div>
+
+    <!-- top right: wind + minimap -->
+    <div class="hud-right">
+      <div class="wind-box">
+        <canvas id="windDial" width="132" height="132"></canvas>
+        <div class="wind-meta">
+          <span class="label">WIND</span>
+          <span id="windSpeed" class="value">&ndash;</span>
+        </div>
+      </div>
+      <canvas id="minimap" class="minimap" width="190" height="190"></canvas>
+    </div>
+
+    <!-- bottom: own ship status -->
+    <div class="hud-bottom">
+      <div class="status-card">
+        <div class="status-row">
+          <span class="ship-name" id="ownName">&mdash;</span>
+          <span class="pill" id="scorePill">0</span>
+        </div>
+        <div class="bar health"><div id="healthFill" class="fill"></div><span id="healthText">100</span></div>
+        <div class="bar reload"><div id="reloadFill" class="fill"></div><span id="reloadText">Ready</span></div>
+        <div class="bar boost"><div id="boostFill" class="fill"></div><span id="boostText">Boost</span></div>
+        <div class="status-row small">
+          <span>Side <b id="sideLabel">Starboard</b></span>
+          <span>Guns <b id="gunLabel">2 / side</b></span>
+        </div>
+        <div id="buffs" class="buffs"></div>
+      </div>
+    </div>
+
+    <div id="respawn" class="respawn hidden">
+      <h2>Sunk!</h2>
+      <p id="respawnText">Refitting...</p>
+    </div>
+
+    <div class="round-box">
+      <div id="roundTimer" class="round-timer">10:00</div>
+      <div id="roundNote" class="round-note"></div>
+    </div>
+
+    <div id="zoneWarn" class="zone-warn hidden">
+      <b>OUTSIDE THE BATTLE AREA</b>
+      <span>Get back inside or you go down</span>
+    </div>
+
+    <div id="killfeed" class="killfeed"></div>
+
+    <div class="hud-help" id="helpBox">
+      <b>&larr; &rarr;</b> steer &nbsp; <b>&uarr;</b> boost &nbsp;
+      <b>Q / E</b> port &middot; starboard &nbsp; <b>S</b> swap side &nbsp;
+      <b>Space</b> fire &nbsp; <b>M</b> mute &nbsp; <b>H</b> hide help &nbsp; <b>Esc</b> leave
+    </div>
+  </div>
+
+  <div id="connLost" class="overlay hidden">
+    <div class="overlay-card">
+      <h2>Connection lost</h2>
+      <p>The line to the server parted.</p>
+      <button id="reconnectBtn" class="btn primary">Back to harbour</button>
+    </div>
+  </div>
+</section>
+
+<!-- Shown over whatever screen is up when a round finishes. -->
+<div id="matchOver" class="overlay hidden">
+  <div class="overlay-card wide-card">
+    <h2 id="matchOverTitle">Time!</h2>
+    <div id="matchWinner" class="match-winner"></div>
+    <p id="matchOverSub">Final standings</p>
+    <div id="standings" class="standings"></div>
+    <button id="backToLobby" class="btn primary">Back to the lobby</button>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="/shared/constants.js"></script>
+<script src="/shared/mapgen.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/net.js"></script>
+<script src="js/terrain.js"></script>
+<script src="js/render.js"></script>
+<script src="js/menuscene.js"></script>
+<script src="js/input.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
