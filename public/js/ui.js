@@ -203,7 +203,7 @@
   /** Mirrors Game.sailEfficiency so the HUD can show your point of sail. */
   function sailEfficiency(heading, windDir) {
     var c = Math.cos(heading - windDir);
-    return 0.30 + 0.70 * Math.pow((c + 1) / 2, 0.85);
+    return 0.44 + 0.56 * Math.pow((c + 1) / 2, 0.85);
   }
 
   function pointOfSail(heading, windDir) {
@@ -298,6 +298,7 @@
         buffs.appendChild(el('span', 'buff', 'Guns +' + (me.cannons - C.CANNONS_BASE)));
       }
       if (me.rapid > 0) buffs.appendChild(el('span', 'buff rapid', 'Fire rate +' + me.rapid));
+      if (me.range > 0) buffs.appendChild(el('span', 'buff range', 'Range +' + me.range));
       if (me.superTime > 0) {
         buffs.appendChild(el('span', 'buff super', 'Super shot ' + me.superTime.toFixed(1) + 's'));
       }

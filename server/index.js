@@ -313,6 +313,12 @@ function handle(client, msg) {
       break;
     }
 
+    case 'taunt': {
+      if (!lobby || !lobby.game) break;
+      lobby.game.queueTaunt(client.id);
+      break;
+    }
+
     case 'ping':
       client.send({ t: 'pong', c: msg.c });
       break;

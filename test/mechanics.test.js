@@ -472,6 +472,91 @@ section('rapid fire');
 }
 
 // =====================================================================
+section('range crate');
+{
+  const g = new Game(C.MODE_DM, 4242);
+  const w = openWater(g);
+  const s = placeShip(g, 1, 'Farsight', -1, w.x, w.y, 0);
+
+  check('range is a real power-up type', C.PU.RANGE === 'range');
+  check('it is in the spawn table', C.PU_WEIGHTS.some((row) => row[0] === C.PU.RANGE));
+  check('base range is the configured value', s.range === C.RANGE, s.range);
+
+  g.applyPowerup(s, C.PU.RANGE);
+  const one = s.range;
+  check('one crate extends the range', one > C.RANGE, C.RANGE + ' -> ' + one.toFixed(0));
+
+  g.applyPowerup(s, C.PU.RANGE);
+  g.applyPowerup(s, C.PU.RANGE);
+  check('it stacks', s.range > one, one.toFixed(0) + ' -> ' + s.range.toFixed(0));
+  for (let i = 0; i < 10; i++) g.applyPowerup(s, C.PU.RANGE);
+  check('stacks are capped', s.rangeStacks === C.RANGE_MAX_STACK, s.rangeStacks);
+
+  // It must actually make the guns reach further.
+  s.side = 1;
+  s.reloadAt = 0;
+  g.applyInput(1, { d: 0, f: true, s: 1 });
+  run(g, 0.1);
+  const balls = g.projectiles.slice();
+  check('a shot flies further with the crate stacked',
+    balls.length > 0 && balls.every((b) => b.maxDist > C.RANGE),
+    balls.length ? Math.round(balls[0].maxDist) + ' vs base ' + C.RANGE : 'none');
+
+  // And it is carried, so it drops when she sinks.
+  const g2 = new Game(C.MODE_DM, 4242);
+  const carrier = placeShip(g2, 1, 'Carrier', -1, w.x, w.y, 0);
+  g2.applyPowerup(carrier, C.PU.RANGE);
+  check('range is carried for the sink drop',
+    carrier.powerups.indexOf(C.PU.RANGE) >= 0, JSON.stringify(carrier.powerups));
+  g2.powerups.length = 0;
+  g2.sink(carrier, null, 'shot');
+  check('it can be dropped on sinking',
+    g2.powerups.some((q) => q.type === C.PU.RANGE), g2.powerups.map((q) => q.type).join(','));
+
+  // Respawning must clear it.
+  const sp = g2.chooseSpawn(-1);
+  carrier.resetForSpawn(sp.x, sp.y, 0, g2.time);
+  check('respawn clears the range bonus', carrier.rangeStacks === 0 && carrier.range === C.RANGE);
+}
+
+// =====================================================================
+section('taunts');
+{
+  const g = new Game(C.MODE_DM, 4242);
+  const w = openWater(g);
+  const s = placeShip(g, 1, 'Loudmouth', -1, w.x, w.y, 0);
+
+  check('the insult list is not empty', C.PIRATE_INSULTS.length > 0);
+
+  g.queueTaunt(1);
+  const ev = drain(g);
+  const taunt = ev.find((e) => e.k === 'taunt');
+  check('a taunt event is raised', !!taunt);
+  check('it names the shouting ship', taunt && taunt.v === 1);
+  check('it carries one of the configured insults',
+    taunt && C.PIRATE_INSULTS.indexOf(taunt.m) >= 0, taunt && taunt.m);
+
+  g.queueTaunt(1);
+  const ev2 = drain(g);
+  check('a second taunt right away is throttled', !ev2.some((e) => e.k === 'taunt'));
+
+  g.time += 2;
+  g.queueTaunt(1);
+  const ev3 = drain(g);
+  check('a taunt is allowed again once the cooldown passes', ev3.some((e) => e.k === 'taunt'));
+
+  g.queueTaunt(999);
+  const ev4 = drain(g);
+  check('a taunt for an unknown ship is ignored', !ev4.some((e) => e.k === 'taunt'));
+
+  s.alive = false;
+  g.time += 2;
+  g.queueTaunt(1);
+  const ev5 = drain(g);
+  check('a sunk ship cannot taunt', !ev5.some((e) => e.k === 'taunt'));
+}
+
+// =====================================================================
 section('sailing into land and the map edge');
 {
   const g = new Game(C.MODE_DM, 4242);
@@ -522,7 +607,6 @@ section('gunnery');
   victim.protectUntil = 0;
 
   shooter.side = 1;   // starboard = +y when heading east
-  shooter.range = 0;
   g.applyInput(1, { d: 0, f: true, s: 1 });
   g.applyInput(2, { d: 0, f: false, s: 1 });
 
@@ -543,7 +627,7 @@ section('gunnery');
   run(g2, 2);
   check('port broadside misses a starboard target', v2.hp === C.SHIP_HP, 'hp=' + v2.hp);
 
-  // One fixed range, and no way to change it.
+  // No player-selectable range band; an unupgraded ship fires at the base range.
   const g3 = new Game(C.MODE_DM, 4242);
   g3.windStrength = 0.4;
   const sh3 = placeShip(g3, 1, 'Gunner', -1, w.x, w.y, 0);
@@ -554,11 +638,12 @@ section('gunnery');
     balls.length > 0 && balls.every((b) => Math.abs(b.maxDist - C.RANGE) <= C.RANGE * 0.05),
     balls.length ? Math.round(balls[0].maxDist) + ' vs ' + C.RANGE : 'none');
   check('there is no range band list any more', C.RANGES === undefined);
-  check('ships carry no range setting', sh3.range === undefined);
+  check('an unupgraded ship reports the base range', sh3.range === C.RANGE, sh3.range);
 
-  // A range in the input must be ignored rather than honoured.
+  // A range in the input must be ignored rather than honoured - only a
+  // range crate can change it.
   g3.applyInput(1, { d: 0, f: true, s: 1, r: 0 });
-  check('a stray range field is ignored', sh3.range === undefined);
+  check('a stray range field in the input is ignored', sh3.range === C.RANGE, sh3.range);
 
   run(g3, 3);
   const ev3 = drain(g3);

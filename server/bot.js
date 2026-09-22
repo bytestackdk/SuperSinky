@@ -85,14 +85,14 @@ class BotBrain {
       // settle at a fighting range. Closing in matters twice over: the shot
       // flies for less time, and the arc the guns can bear through is wider.
       // A hurt bot stands off near the limit of the guns instead.
-      const ideal = s.hp > 45 ? C.RANGE * 0.45 : C.RANGE * 0.9;
+      const ideal = s.hp > 45 ? s.range * 0.45 : s.range * 0.9;
       const closing = clamp((dist - ideal) / 400, -1, 1);
       desiredHeading = toTarget - s.side * (Math.PI / 2) * (1 - closing * 0.8);
 
       // Tolerance shrinks with range - a distant target needs finer aim.
       const tol = Math.atan2(26, Math.max(70, aim.dist)) + 0.05 + (1 - this.skill) * 0.06;
       const inArc = Math.abs(bearing + this.aimError) < tol;
-      const inRange = aim.dist < C.RANGE && aim.dist > 55;
+      const inRange = aim.dist < s.range && aim.dist > 55;
       const clearShot = game.hasLineOfFire(s.x, s.y, aim.x, aim.y);
       fire = inArc && inRange && clearShot && !this.friendlyInLine(game, aim);
 
@@ -141,7 +141,7 @@ class BotBrain {
 
     const dist = Math.hypot(target.x - s.x, target.y - s.y);
     if (s.hp < 35) return true;                    // running for her life
-    if (dist > C.RANGE * 1.25) return true;        // too far to be any use
+    if (dist > s.range * 1.25) return true;        // too far to be any use
     return false;
   }
 
@@ -305,7 +305,7 @@ class BotBrain {
     const s = this.ship;
     if (game.mode !== C.MODE_TDM) return false;
     const perp = s.angle + s.side * Math.PI / 2;
-    const reach = C.RANGE;
+    const reach = s.range;
     for (const o of game.ships.values()) {
       if (o.id === s.id || !o.alive || o.team !== s.team) continue;
       const dx = o.x - s.x, dy = o.y - s.y;

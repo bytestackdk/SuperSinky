@@ -186,6 +186,8 @@
     this.wrecks = [];
     this.trails = {};          // shipId -> the path she has cut through the water
     this.floaters = [];        // short-lived labels that rise off the water
+    this.taunts = {};          // shipId -> the insult currently over her mast
+    this._tauntDraws = [];     // this frame's bubbles, drawn after everything else
     this.gulls = [];
     this.nextGullAt = 6;       // first flock shows up shortly after the start
     this.showEdge = true;      // the menu diorama has no map border to mark
@@ -661,6 +663,7 @@
     cannon: 'Extra Cannon',
     super: 'Super Shot',
     rapid: 'Rapid Fire',
+    range: 'Long Range',
     repair_s: 'Repairs +' + C.REPAIR_S_AMOUNT,
     repair_l: 'Repairs +' + C.REPAIR_L_AMOUNT
   };
@@ -670,6 +673,7 @@
     cannon: { col: '#3a3a42', ring: '#9aa0aa' },
     super: { col: '#e6394d', ring: '#ff8fa3' },
     rapid: { col: '#f4a259', ring: '#ffc489' },
+    range: { col: '#c77dff', ring: '#e0c3ff' },
     repair_s: { col: '#64c98a', ring: '#9bde7e' },
     repair_l: { col: '#39b06a', ring: '#9bde7e' }
   };
@@ -762,6 +766,18 @@
         var t = type === 'repair_l' ? 1.32 : 0.92;
         ctx.fillRect(-2.6 * z * t, -8 * z * t, 5.2 * z * t, 16 * z * t);
         ctx.fillRect(-8 * z * t, -2.6 * z * t, 16 * z * t, 5.2 * z * t);
+        break;
+      case 'range':
+        // A captain's spyglass: two tapered tubes, extended.
+        ctx.save();
+        ctx.rotate(-0.55);
+        ctx.lineWidth = 3.2 * z; ctx.lineCap = 'butt';
+        ctx.beginPath(); ctx.moveTo(-8 * z, 0); ctx.lineTo(0, 0); ctx.stroke();
+        ctx.lineWidth = 5 * z;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(8 * z, 0); ctx.stroke();
+        ctx.fillStyle = look.ring;
+        ctx.beginPath(); ctx.arc(8.5 * z, 0, 2.6 * z, 0, TAU); ctx.fill();
+        ctx.restore();
         break;
     }
   };
@@ -1072,6 +1088,11 @@
 
     // ---- name plate ----
     if (this.showNames) this.drawNamePlate(state, s, x, y + bob, z, col);
+
+    // ---- taunt bubble ----
+    // Queued rather than drawn here: it must appear in front of the map
+    // edge fence, which is not drawn until after every ship is.
+    if (this.taunts[s.id]) this._tauntDraws.push({ s: s, x: x, y: y + bob, z: z });
   };
 
   Renderer.prototype.hullPath = function (ctx, inset) {
@@ -1336,6 +1357,114 @@
     ctx.lineWidth = 1;
     ctx.strokeRect(x - w / 2 - 1.5, top - 1.5, w + 3, bh + 3);
     ctx.restore();
+  };
+
+  /** Called when a ship shouts a taunt; shown as a bubble over her mast. */
+  Renderer.prototype.addTaunt = function (shipId, text) {
+    this.taunts[shipId] = { text: text, born: this.time, life: 4.2 };
+  };
+
+  /** Draws this frame's bubbles, queued by drawShip so they land on top of
+   *  everything drawn since - the map edge fence included. */
+  Renderer.prototype.drawTaunts = function () {
+    var pending = this._tauntDraws;
+    this._tauntDraws = [];
+    for (var i = 0; i < pending.length; i++) {
+      this.drawTaunt(pending[i].s, pending[i].x, pending[i].y, pending[i].z);
+    }
+  };
+
+  Renderer.prototype.drawTaunt = function (s, x, y, z) {
+    var t = this.taunts[s.id];
+    if (!t) return;
+    var age = this.time - t.born;
+    if (age >= t.life) { delete this.taunts[s.id]; return; }
+
+    var ctx = this.ctx;
+    var fadeIn = Math.min(1, age / 0.15);
+    var fadeOut = age > t.life - 0.5 ? (t.life - age) / 0.5 : 1;
+    var alpha = Math.max(0, Math.min(fadeIn, fadeOut));
+    if (alpha <= 0) return;
+
+    // Kept close to full size even when zoomed well out, so an insult is
+    // never so tiny it cannot be read at a glance.
+    var scale = clamp(z, 0.75, 1.4);
+    var fontSize = Math.round(17 * scale);
+    var maxTextW = 210 * scale;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = 'bold ' + fontSize + 'px "Trebuchet MS", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    var lines = this._wrapText(ctx, t.text, maxTextW);
+    var lineH = fontSize * 1.16;
+    var padX = 16 * scale, padY = 12 * scale;
+    var textW = 0;
+    for (var i = 0; i < lines.length; i++) textW = Math.max(textW, ctx.measureText(lines[i]).width);
+    var w = textW + padX * 2;
+    var h = lines.length * lineH + padY * 2;
+    var tailLen = 13 * scale, tailHalf = 9 * scale;
+    var tipY = y - 66 * z;
+    var boxBottom = tipY - tailLen;
+    var top = boxBottom - h;
+    var cx = x;
+
+    this._speechBubblePath(ctx, cx, top, w, h, 12 * scale, tailHalf, tailLen);
+    ctx.fillStyle = 'rgba(253,247,232,0.86)';
+    ctx.fill();
+    ctx.lineWidth = Math.max(2, 2.4 * scale);
+    ctx.strokeStyle = 'rgba(26,17,9,0.9)';
+    ctx.stroke();
+
+    ctx.fillStyle = '#201408';
+    for (var j = 0; j < lines.length; j++) {
+      ctx.fillText(lines[j], cx, top + padY + lineH * (j + 0.5));
+    }
+    ctx.restore();
+  };
+
+  /** Greedily wraps text to fit maxWidth, using the context's current font. */
+  Renderer.prototype._wrapText = function (ctx, text, maxWidth) {
+    var words = text.split(' ');
+    var lines = [];
+    var line = '';
+    for (var i = 0; i < words.length; i++) {
+      var test = line ? line + ' ' + words[i] : words[i];
+      if (line && ctx.measureText(test).width > maxWidth) {
+        lines.push(line);
+        line = words[i];
+      } else {
+        line = test;
+      }
+    }
+    if (line) lines.push(line);
+    return lines;
+  };
+
+  /**
+   * A single continuous outline for a classic comic speech bubble: a rounded
+   * box with a pointed tail cut straight into its bottom edge, so the fill
+   * and stroke never leave a seam where the tail meets the body.
+   */
+  Renderer.prototype._speechBubblePath = function (ctx, cx, top, w, h, r, tailHalf, tailLen) {
+    var left = cx - w / 2, right = cx + w / 2, bottom = top + h;
+    r = Math.min(r, h / 2, w / 2);
+    ctx.beginPath();
+    ctx.moveTo(left + r, top);
+    ctx.lineTo(right - r, top);
+    ctx.arcTo(right, top, right, top + r, r);
+    ctx.lineTo(right, bottom - r);
+    ctx.arcTo(right, bottom, right - r, bottom, r);
+    ctx.lineTo(cx + tailHalf, bottom);
+    ctx.lineTo(cx, bottom + tailLen);
+    ctx.lineTo(cx - tailHalf, bottom);
+    ctx.lineTo(left + r, bottom);
+    ctx.arcTo(left, bottom, left, bottom - r, r);
+    ctx.lineTo(left, top + r);
+    ctx.arcTo(left, top, left + r, top, r);
+    ctx.closePath();
   };
 
   // =====================================================================
@@ -1648,6 +1777,7 @@
     this.updateGulls(dt, state);
     this.drawGulls();
     if (this.showEdge) this.drawEdgeFence();
+    this.drawTaunts();
     this.drawFloaters(dt);
 
     ctx.restore();

@@ -364,6 +364,25 @@ try {
   check('90 frames render without error', false, e.message + '\n' + e.stack);
 }
 
+// Taunt speech bubble
+try {
+  // Ship id 1 (kinds[0]) is alive in every makeState() call.
+  const longInsult = C.PIRATE_INSULTS.reduce((a, b) => (b.length > a.length ? b : a), '');
+  renderer.addTaunt(1, longInsult);
+  check('a taunt is recorded', !!renderer.taunts[1]);
+
+  const before = calls.byName.fillText || 0;
+  renderer.draw(makeState(2), 1 / 60);
+  const after = calls.byName.fillText || 0;
+  check('drawing a taunt calls fillText for its lines', after > before, (after - before) + ' fillText calls');
+
+  // Fast-forward well past its life and confirm it cleans itself up.
+  for (let i = 0; i < 6; i++) renderer.draw(makeState(2), 1);
+  check('an expired taunt is forgotten', !renderer.taunts[1]);
+} catch (e) {
+  check('taunt bubble renders without error', false, e.message + '\n' + e.stack);
+}
+
 // Deathmatch variant (different scoreboard path)
 try {
   const st = makeState(1);
@@ -567,7 +586,8 @@ try {
 section('audio without WebAudio support');
 try {
   win.Sfx.setMuted(false);
-  ['fire', 'hit', 'splash', 'rock', 'sink', 'pickup', 'ram', 'ground', 'whirl', 'spawn', 'ready']
+  ['fire', 'hit', 'splash', 'rock', 'sink', 'pickup', 'ram', 'ground', 'whirl', 'spawn', 'ready',
+    'boost', 'shrink', 'gull', 'fanfare']
     .forEach((k) => win.Sfx.play(k, 0.8));
   win.Sfx.toggle();
   win.Sfx.resume();

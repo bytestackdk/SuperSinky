@@ -312,7 +312,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   if (!after || !before) { console.log('\n  aborting input checks'); srv.kill('SIGKILL'); process.exit(1); }
   check('firing side applied', after[5] === -1, 'side=' + after[5]);
   check('boost was spent while held', after[15] < 1, 'boost=' + after[15]);
-  check('ship tuple carries the full state', after.length === 19, 'len=' + after.length);
+  check('ship tuple carries the full state', after.length === 20, 'len=' + after.length);
   check('boost reserve is reported', after[15] >= 0 && after[15] <= 1, 'boost=' + after[15]);
   const turned = Math.abs(after[3] - before[3]) > 0.15;
   check('steering applied', turned, 'angle ' + before[3].toFixed(2) + ' -> ' + after[3].toFixed(2));

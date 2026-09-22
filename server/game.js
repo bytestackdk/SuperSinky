@@ -52,6 +52,7 @@ class Ship {
     this.cannons = C.CANNONS_BASE;
     this.sailStacks = 0;
     this.rapidStacks = 0;
+    this.rangeStacks = 0;
     this.superUntil = 0;
     this.reloadAt = 0;
     this.protectUntil = 0;
@@ -71,11 +72,13 @@ class Ship {
     // Far in the past, so the very first collision of a match still counts.
     this.groundHitAt = -1e9;
     this.collideAt = -1e9;
+    this.lastTauntAt = -1e9;
     this.bot = null;               // bot brain, when isBot
   }
 
   get sailMult() { return 1 + this.sailStacks * C.SAIL_BONUS; }
   get reloadTime() { return C.RELOAD * Math.pow(1 - C.RAPID_BONUS, this.rapidStacks); }
+  get range() { return C.RANGE * (1 + this.rangeStacks * C.RANGE_BONUS); }
   isSuper(now) { return now < this.superUntil; }
   isRegenerating(now) {
     return this.alive && this.hp < C.SHIP_HP && now - this.combatAt >= C.REGEN_DELAY;
@@ -89,6 +92,7 @@ class Ship {
     this.cannons = C.CANNONS_BASE;
     this.sailStacks = 0;
     this.rapidStacks = 0;
+    this.rangeStacks = 0;
     this.superUntil = 0;
     this.boost = 1;
     this.boosting = false;
@@ -99,6 +103,7 @@ class Ship {
     this.stunUntil = 0;
     this.groundHitAt = -1e9;
     this.collideAt = -1e9;
+    this.lastTauntAt = -1e9;
     this.input.turn = 0;
     this.input.fire = false;
     this.input.boost = false;
@@ -400,6 +405,18 @@ class Game {
   /** Anything that counts as being in action, which holds off repairs. */
   markCombat(ship) { if (ship) ship.combatAt = this.time; }
 
+  /** A shouted insult, shown as a speech bubble over the ship. */
+  queueTaunt(id) {
+    const s = this.ships.get(id);
+    if (!s || !s.alive) return;
+    if (this.time - s.lastTauntAt < 1.4) return;   // no spamming
+    s.lastTauntAt = this.time;
+    this.events.push({
+      k: 'taunt', v: id, x: round1(s.x), y: round1(s.y),
+      m: pick(C.PIRATE_INSULTS)
+    });
+  }
+
   // ---- main loop -----------------------------------------------------
 
   update(dt) {
@@ -486,7 +503,7 @@ class Game {
   /** How well a heading sails in the current wind: 0.30 (beating) .. 1.0 (running). */
   sailEfficiency(heading) {
     const c = Math.cos(heading - this.windDir);
-    return 0.36 + 0.64 * Math.pow((c + 1) / 2, 0.85);
+    return 0.44 + 0.56 * Math.pow((c + 1) / 2, 0.85);
   }
 
   _updateShips(dt) {
@@ -518,7 +535,7 @@ class Game {
       // Speed is entirely wind-driven: no throttle, only heading choice.
       // Even the lightest breeze still pushes her along decently; the wind
       // shifting is meant to change your best heading, not becalm you.
-      const strength = 0.58 + 0.42 * this.windStrength;
+      const strength = 0.64 + 0.36 * this.windStrength;
       const boostMult = s.boosting ? C.BOOST_MULT : 1;
       const target = stunned ? 0
         : C.BASE_SPEED * this.sailEfficiency(s.angle) * strength * s.sailMult * boostMult;
@@ -605,7 +622,7 @@ class Game {
     this.markCombat(s);
     const perp = s.angle + s.side * Math.PI / 2;
     const n = s.cannons;
-    const maxDist = C.RANGE;
+    const maxDist = s.range;
     const superShot = s.isSuper(now);
 
     for (let i = 0; i < n; i++) {
@@ -877,6 +894,9 @@ class Game {
       case C.PU.RAPID:
         if (s.rapidStacks < C.RAPID_MAX_STACK) { s.rapidStacks++; s.powerups.push(type); }
         break;
+      case C.PU.RANGE:
+        if (s.rangeStacks < C.RANGE_MAX_STACK) { s.rangeStacks++; s.powerups.push(type); }
+        break;
       case C.PU.REPAIR_S:
         s.hp = Math.min(C.SHIP_HP, s.hp + C.REPAIR_S_AMOUNT);
         break;
@@ -1043,7 +1063,8 @@ class Game {
         Math.round(s.boost * 100) / 100,
         s.boosting ? 1 : 0,
         s.rapidStacks,
-        s.isRegenerating(now) ? 1 : 0
+        s.isRegenerating(now) ? 1 : 0,
+        s.rangeStacks
       ]);
     }
 

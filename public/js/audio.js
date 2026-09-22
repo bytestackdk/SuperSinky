@@ -157,19 +157,24 @@
 
       switch (kind) {
         case 'fire': {
-          // One ragged report per gun, a few milliseconds apart, so a
-          // six-gun broadside rolls instead of cracking all at once.
+          // One ragged, punchy report per gun, a few milliseconds apart, so
+          // a six-gun broadside rolls instead of cracking all at once.
           var guns = Math.max(1, Math.min(6, n || 2));
           for (var i = 0; i < guns; i++) {
             var d = i * rnd(0.022, 0.05);
             var j = rnd(0.88, 1.12);
-            noise({ dur: 0.05, vol: 0.42 * v, type: 'highpass', f0: 1400 * j, f1: 4200, delay: d, pan: pan, attack: 0.001 });
-            noise({ dur: 0.34, vol: 0.5 * v, type: 'lowpass', f0: 1100 * j, f1: 120, delay: d, pan: pan });
-            tone({ type: 'triangle', f0: 132 * j, f1: 38, dur: 0.24, vol: 0.30 * v, delay: d, pan: pan });
-            tone({ type: 'sine', f0: 62 * j, f1: 28, dur: 0.38, vol: 0.26 * v, delay: d, pan: pan });
+            // The crack of the touch-hole catching.
+            noise({ dur: 0.045, vol: 0.52 * v, type: 'highpass', f0: 1700 * j, f1: 6800, delay: d, pan: pan, attack: 0.001 });
+            // The concussion of the discharge itself.
+            noise({ dur: 0.42, vol: 0.58 * v, type: 'lowpass', f0: 1300 * j, f1: 95, delay: d, pan: pan });
+            // A hard low thump, like the carriage kicking back on the deck.
+            tone({ type: 'square', f0: 96 * j, f1: 32, dur: 0.11, vol: 0.30 * v, delay: d, pan: pan, attack: 0.001 });
+            tone({ type: 'triangle', f0: 132 * j, f1: 36, dur: 0.26, vol: 0.32 * v, delay: d, pan: pan });
+            tone({ type: 'sine', f0: 52 * j, f1: 22, dur: 0.55, vol: 0.36 * v, delay: d, pan: pan });
           }
-          // The report rolling away across the water.
-          noise({ dur: 0.85, vol: 0.10 * v, type: 'lowpass', f0: 420, f1: 90, delay: 0.09, pan: pan * 0.5, curve: 'swell' });
+          // The report rolling away and echoing back off the water.
+          noise({ dur: 1.1, vol: 0.17 * v, type: 'lowpass', f0: 460, f1: 85, delay: 0.09, pan: pan * 0.5, curve: 'swell' });
+          noise({ dur: 0.9, vol: 0.09 * v, type: 'lowpass', f0: 320, f1: 70, delay: 0.34, pan: pan * 0.3, curve: 'swell' });
           break;
         }
 
@@ -279,6 +284,25 @@
           tone({ type: 'square', f0: 1240, f1: 1240, dur: 0.035, vol: 0.07 * v });
           tone({ type: 'square', f0: 1660, f1: 1660, dur: 0.05, vol: 0.06 * v, delay: 0.06 });
           break;
+
+        case 'fanfare': {
+          // A short brass fanfare: a rising call, then a chord that rings
+          // out over a low root, with a bright cymbal-like shimmer under it.
+          var call = [523.25, 523.25, 783.99, 1046.50];   // C5 C5 G5 C6
+          var callAt = [0, 0.16, 0.32, 0.50];
+          for (var f2 = 0; f2 < call.length; f2++) {
+            tone({ type: 'sawtooth', f0: call[f2], f1: call[f2], dur: 0.30, vol: 0.30 * v, delay: callAt[f2], attack: 0.006 });
+            tone({ type: 'square', f0: call[f2] / 2, f1: call[f2] / 2, dur: 0.30, vol: 0.16 * v, delay: callAt[f2], attack: 0.006 });
+          }
+          var chordAt = 0.74;
+          var chord = [783.99, 1046.50, 1318.51];        // G5, C6, E6
+          for (var g2 = 0; g2 < chord.length; g2++) {
+            tone({ type: 'sawtooth', f0: chord[g2], f1: chord[g2], dur: 1.3, vol: 0.24 * v, delay: chordAt, attack: 0.01 });
+          }
+          tone({ type: 'sine', f0: 130.81, f1: 130.81, dur: 1.4, vol: 0.26 * v, delay: chordAt, attack: 0.01 });
+          noise({ dur: 1.1, vol: 0.12 * v, type: 'highpass', f0: 4500, f1: 9000, delay: chordAt, curve: 'swell' });
+          break;
+        }
       }
     }
   };

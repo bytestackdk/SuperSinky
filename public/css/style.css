@@ -386,6 +386,7 @@ select option { background: #0b2c46; }
 .buff.sail { background: rgba(100, 201, 138, .14); border-color: rgba(100, 201, 138, .5); color: #9bde7e; }
 .buff.rapid { background: rgba(244, 162, 89, .16); border-color: rgba(244, 162, 89, .55); color: #ffc489; }
 .buff.regen { background: rgba(143, 240, 189, .14); border-color: rgba(143, 240, 189, .5); color: #8ff0bd; }
+.buff.range { background: rgba(199, 125, 255, .14); border-color: rgba(199, 125, 255, .5); color: #c77dff; }
 
 .respawn {
   position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%);

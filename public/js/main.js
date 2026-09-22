@@ -118,6 +118,7 @@
         boosting: !!b[16],
         rapid: b[17],
         regen: !!b[18],
+        range: b[19] || 0,
         name: meta.name,
         team: meta.team,
         isBot: meta.isBot,
@@ -296,6 +297,10 @@
         case 'shrink':
           UI.toast('The battle area is closing in (' + e.n + ' / ' + e.of + ')');
           global.Sfx.play('shrink', 0.85);
+          break;
+
+        case 'taunt':
+          renderer.addTaunt(e.v, e.m);
           break;
 
       }
@@ -515,6 +520,7 @@
   net.on('matchEnd', function (m) {
     app.inGame = false;
     input.setEnabled(false);
+    global.Sfx.play('fanfare', 0.9);
     if (m && m.standings && m.standings.length) {
       UI.showStandings(m, app.myId);
     } else {
@@ -635,6 +641,8 @@
   };
 
   input.onToggleHelp = function () { $('helpBox').classList.toggle('hidden'); };
+
+  input.onTaunt = function () { net.send({ t: 'taunt' }); };
 
   input.onToggleMute = function () {
     var m = global.Sfx.toggle();

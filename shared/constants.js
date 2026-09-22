@@ -80,7 +80,7 @@
     WIND_CHANGE_EVERY: [9, 20],
 
     // ---- gunnery -----------------------------------------------------
-    RANGE: 560,              // fixed - there is no range selection any more
+    RANGE: 560,              // base reach; a range crate stacks on top of this
     BALL_SPEED: 560,
     BALL_DAMAGE: 10,
     SUPER_MULT: 2.3,
@@ -120,6 +120,7 @@
       CANNON: 'cannon',
       SUPER: 'super',
       RAPID: 'rapid',
+      RANGE: 'range',
       REPAIR_S: 'repair_s',
       REPAIR_L: 'repair_l'
     },
@@ -128,6 +129,7 @@
       ['cannon', 18],
       ['super', 16],
       ['rapid', 17],
+      ['range', 16],
       ['repair_s', 24],
       ['repair_l', 12]
     ],
@@ -135,9 +137,33 @@
     SAIL_MAX_STACK: 3,
     RAPID_BONUS: 0.18,       // reload time cut per stack
     RAPID_MAX_STACK: 3,
+    RANGE_BONUS: 0.16,       // per stack, on top of the base RANGE
+    RANGE_MAX_STACK: 3,
     REPAIR_S_AMOUNT: 25,
     REPAIR_L_AMOUNT: 60,
     DROP_MAX: 3,
+
+    // ---- taunts --------------------------------------------------------
+    PIRATE_INSULTS: [
+      'Ye sail like a barnacle lashed to a plank — brutal, just brutal!',
+      'Yer rigging\'s a disgrace and yer aim is worse, ye brutal landlubber!',
+      'I\'ve seen driftwood with more backbone, ye brutal bilge rat!',
+      'Yer cannons couldn\'t hit the ocean, ye brutal excuse for a captain!',
+      'WOLLA!',
+      'Walk the plank, ye brutal chum bucket!',
+      'Ye steer like a drunk seagull — brutal, absolutely brutal!',
+      'Me granny sails faster with a hole in her hull, ye brutal disgrace!',
+      'Yer crew jumped ship \'cause even they think ye\'re brutal!',
+      'Ye couldn\'t out-sail a floating coconut, ye brutal wretch!',
+      'WOLLA!',
+      'That broadside was as brutal as a wet noodle, matey!',
+      'Ye smell like low tide and bad decisions — brutal!',
+      'Even Davy Jones wouldn\'t want ye in his locker, ye brutal barnacle!',
+      'Ye navigate like the map\'s upside down, ye brutal fool!',
+      'Shiver me timbers, that was a brutal display of sailing, ye muppet!',
+      'Ye\'ve the aim of a blind cannon and the courage of a clam — brutal!',
+      'Come at me, ye brutal tub of bilgewater!'
+    ],
 
     // ---- lobbies -----------------------------------------------------
     MODE_DM: 'dm',
