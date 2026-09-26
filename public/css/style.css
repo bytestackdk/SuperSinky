@@ -283,7 +283,6 @@ select option { background: #0b2c46; }
 .score-row .pts { font-weight: bold; min-width: 22px; text-align: right; }
 .score-row.me { color: var(--brass-bright); }
 .score-row.dead { opacity: .45; }
-.score-row .bt { font-size: 9px; color: var(--parchment-dim); letter-spacing: 1px; }
 
 .team-score-head {
   display: flex; justify-content: space-between; align-items: center;
@@ -296,21 +295,16 @@ select option { background: #0b2c46; }
 
 .hud-right { position: absolute; top: 14px; right: 14px; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; }
 
-.wind-box {
-  position: relative;
+.wind-meta {
   background: rgba(4, 22, 36, .74);
   border: 1px solid rgba(217, 164, 65, .28);
-  border-radius: 10px;
-  padding: 6px;
+  border-radius: 8px;
+  padding: 4px 10px;
+  display: flex; align-items: baseline; gap: 8px;
 }
 
-.wind-meta {
-  position: absolute; bottom: 6px; left: 0; right: 0;
-  text-align: center; line-height: 1.25;
-}
-
-.wind-meta .label { display: block; font-size: 10px; letter-spacing: 3px; color: var(--brass); font-weight: bold; }
-.wind-meta .value { font-size: 14px; color: var(--parchment); font-weight: bold; letter-spacing: .3px; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
+.wind-meta .label { font-size: 10px; letter-spacing: 3px; color: var(--brass); font-weight: bold; }
+.wind-meta .value { font-size: 13px; color: var(--parchment); font-weight: bold; letter-spacing: .3px; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
 
 .minimap {
   background: rgba(4, 22, 36, .74);
@@ -318,14 +312,14 @@ select option { background: #0b2c46; }
   border-radius: 10px;
 }
 
-.hud-bottom { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); }
+.hud-bottom { position: absolute; bottom: 14px; right: 14px; }
 
 .status-card {
   background: rgba(4, 22, 36, .78);
   border: 1px solid rgba(217, 164, 65, .3);
   border-radius: 11px;
   padding: 10px 14px;
-  width: 340px;
+  width: 300px;
   backdrop-filter: blur(3px);
 }
 
@@ -387,6 +381,7 @@ select option { background: #0b2c46; }
 .buff.rapid { background: rgba(244, 162, 89, .16); border-color: rgba(244, 162, 89, .55); color: #ffc489; }
 .buff.regen { background: rgba(143, 240, 189, .14); border-color: rgba(143, 240, 189, .5); color: #8ff0bd; }
 .buff.range { background: rgba(199, 125, 255, .14); border-color: rgba(199, 125, 255, .5); color: #c77dff; }
+.buff.ram { background: rgba(205, 133, 63, .16); border-color: rgba(205, 133, 63, .55); color: #e0a56e; }
 
 .respawn {
   position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%);
@@ -520,6 +515,29 @@ select option { background: #0b2c46; }
 .kill-line.tk { border-color: rgba(230, 57, 77, .55); }
 .kill-line .verb { color: var(--parchment-dim); margin: 0 6px; }
 
+.kill-line.mine {
+  border-color: rgba(255, 209, 102, .75);
+  background: rgba(60, 40, 6, .85);
+  box-shadow: 0 0 12px rgba(255, 209, 102, .35);
+  font-weight: bold;
+}
+
+/* Centre-screen call when you sink someone. Sits above the ship but well
+   clear of it, and never catches the mouse. */
+.kill-banner {
+  position: absolute; top: 24%; left: 50%; transform: translateX(-50%);
+  text-align: center; pointer-events: none; white-space: nowrap;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, .95), 0 0 18px rgba(0, 0, 0, .6);
+}
+.kill-banner.hidden { display: none; }
+.kill-banner.show { animation: bannerPop .32s cubic-bezier(.2, 1.6, .4, 1), bannerFade .45s ease-in 1.55s forwards; }
+
+.kb-main { font-size: 30px; font-weight: bold; letter-spacing: 1px; color: var(--parchment); }
+.kb-verb { color: var(--brass-bright); text-transform: uppercase; letter-spacing: 3px; font-size: 22px; }
+
+@keyframes bannerPop { from { opacity: 0; transform: translateX(-50%) scale(1.8); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
+@keyframes bannerFade { to { opacity: 0; transform: translateX(-50%) translateY(-10px); } }
+
 @keyframes killIn { from { opacity: 0; transform: translateY(-7px); } to { opacity: 1; transform: none; } }
 
 .hud-help {
@@ -572,7 +590,14 @@ select option { background: #0b2c46; }
   .form-grid { grid-template-columns: 1fr; gap: 6px; }
   .form-grid label { margin-top: 6px; }
   .hud-scores { min-width: 150px; font-size: 12px; }
-  .status-card { width: min(92vw, 340px); }
+  .status-card { width: min(calc(100vw - 28px), 300px); }
   .minimap { width: 130px; height: 130px; }
   .hud-help { display: none; }
+  .kb-main { font-size: 22px; }
+  .kb-verb { font-size: 16px; }
 }
+
+/* Lobby passwords are room codes, not credentials: masked text instead of
+   type=password so password managers leave the field alone. */
+input.masked { -webkit-text-security: disc; text-security: disc; }
+input.masked:placeholder-shown { -webkit-text-security: none; text-security: none; }

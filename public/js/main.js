@@ -119,6 +119,7 @@
         rapid: b[17],
         regen: !!b[18],
         range: b[19] || 0,
+        ram: b[20] || 0,
         name: meta.name,
         team: meta.team,
         isBot: meta.isBot,
@@ -167,9 +168,11 @@
     var timeLeft = B.rt === undefined ? 0 : Math.max(0, B.rt - age);
     var shrinks = B.sn || 0;
     var elapsed = C.ROUND_SECONDS - timeLeft;
+    // The shrink schedule runs on its own timeline, offset from the round
+    // clock - the round opens partway through it, skipping the quiet start.
     var nextShrinkIn = shrinks >= C.SHRINK_STEPS
       ? null
-      : Math.max(0, (C.SHRINK_START + shrinks * C.SHRINK_EVERY) - elapsed);
+      : Math.max(0, (C.SHRINK_START + shrinks * C.SHRINK_EVERY - C.ZONE_TIME_OFFSET) - elapsed);
 
     var me = null;
     for (var n = 0; n < ships.length; n++) if (ships[n].id === app.myId) me = ships[n];
@@ -322,16 +325,26 @@
     if (killer && e.by !== e.v) {
       var kcol = colorOf(e.by);
       var verb = e.tk ? 'sank their own' : (e.c === 'ram' ? 'rammed' : 'sank');
-      html = '<b style="color:' + kcol + '">' + esc(killer.name) + '</b>' +
+      html = '<b style="color:' + kcol + '">' + shipLabel(killer) + '</b>' +
         '<span class="verb">' + verb + '</span>' +
-        '<b style="color:' + vcol + '">' + esc(victim.name) + '</b>';
+        '<b style="color:' + vcol + '">' + shipLabel(victim) + '</b>';
     } else {
       var cause = e.c === 'whirlpool' ? 'was swallowed by a whirlpool'
         : (e.c === 'ground' ? 'ran aground' : 'went down');
-      html = '<b style="color:' + vcol + '">' + esc(victim.name) + '</b>' +
+      html = '<b style="color:' + vcol + '">' + shipLabel(victim) + '</b>' +
         '<span class="verb">' + cause + '</span>';
     }
-    UI.pushKill(html, !!e.tk);
+    var mine = e.by === app.myId && e.v !== app.myId;
+    UI.pushKill(html, !!e.tk, mine && !e.tk);
+
+    if (mine && !e.tk) {
+      UI.showKillBanner(victim.isBot ? C.BOT_ICON + ' ' + victim.name : victim.name, vcol);
+      global.Sfx.play('kill', 0.9);
+    }
+  }
+
+  function shipLabel(who) {
+    return esc(who.isBot ? C.BOT_ICON + ' ' + who.name : who.name);
   }
 
   function esc(s) {
@@ -366,7 +379,6 @@
     renderer.draw(state, dt);
 
     UI.updateHud(state);
-    renderer.drawWindDial($('windDial'), state.wind, state.me ? state.me.angle : null);
     renderer.drawMinimap($('minimap'), state);
 
     // A short chime the moment the guns come back up.
@@ -579,7 +591,7 @@
     net.send({
       t: 'create',
       name: name,
-      password: $('lobbyPassword').value,
+      password: $('lobbyCode').value,
       mode: $('lobbyMode').value
     });
   };

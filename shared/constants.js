@@ -42,12 +42,17 @@
     SNAPSHOT_HZ: 20,
 
     // ---- the round ---------------------------------------------------
-    ROUND_SECONDS: 600,      // ten minutes, then the match is over
+    ROUND_SECONDS: 420,      // seven minutes, then the match is over
     SHRINK_START: 60,        // the first closing-in is at one minute
     SHRINK_EVERY: 60,
     SHRINK_STEPS: 7,         // one a minute, then it holds for the last two
     ZONE_FINAL: 0.42,        // final arena width as a fraction of the map
     ZONE_EASE: 6,            // seconds the boundary takes to move each step
+    // The shrink schedule above still runs to its full ten-minute length -
+    // the round just opens this far into it, so the quiet opening minutes
+    // are skipped rather than played out. The map starts already part
+    // closed and finishes on exactly the same final arena as before.
+    ZONE_TIME_OFFSET: 180,
     OUTSIDE_DPS: 25,         // caught outside, she goes down in about 4s
     ZONE_WARN: 260,          // start warning this far inside the boundary
 
@@ -84,15 +89,22 @@
     BALL_SPEED: 560,
     BALL_DAMAGE: 10,
     SUPER_MULT: 2.3,
-    SUPER_TIME: 15,
+    SUPER_TIME: 20,          // a crate always resets this, rather than stacking
     RELOAD: 2.1,
     CANNONS_BASE: 2,
-    CANNONS_MAX: 6,
+    CANNONS_MAX: 12,
     SPREAD: 0.055,           // radians of random scatter per ball
 
     // ---- collisions --------------------------------------------------
     RAM_DAMAGE: 9,
+    RAM_BONUS: 0.15,         // per stack, on top of RAM_DAMAGE and HEADON_DAMAGE
+    RAM_MAX_STACK: 10,
     RAM_SELF_DAMAGE: 3,
+    // Ram damage scales with the striking ship's speed: RAM_REF_SPEED deals
+    // exactly RAM_DAMAGE / HEADON_DAMAGE, a boosted charge several times that.
+    RAM_REF_SPEED: 100,
+    RAM_SPEED_MIN: 0.3,      // even a drifting nudge does a little
+    RAM_SPEED_MAX: 3.5,      // and a sail-stacked, boosted charge is capped
     HEADON_DAMAGE: 3,
     GROUND_DAMAGE: 13,
     GROUND_COOLDOWN: 1.1,
@@ -121,6 +133,7 @@
       SUPER: 'super',
       RAPID: 'rapid',
       RANGE: 'range',
+      RAM: 'ram',
       REPAIR_S: 'repair_s',
       REPAIR_L: 'repair_l'
     },
@@ -130,15 +143,16 @@
       ['super', 16],
       ['rapid', 17],
       ['range', 16],
+      ['ram', 16],
       ['repair_s', 24],
       ['repair_l', 12]
     ],
     SAIL_BONUS: 0.22,        // per stack
-    SAIL_MAX_STACK: 3,
+    SAIL_MAX_STACK: 10,
     RAPID_BONUS: 0.18,       // reload time cut per stack
-    RAPID_MAX_STACK: 3,
+    RAPID_MAX_STACK: 10,
     RANGE_BONUS: 0.16,       // per stack, on top of the base RANGE
-    RANGE_MAX_STACK: 3,
+    RANGE_MAX_STACK: 10,
     REPAIR_S_AMOUNT: 25,
     REPAIR_L_AMOUNT: 60,
     DROP_MAX: 3,
@@ -175,6 +189,7 @@
 
     TEAM_COLORS: ['#e6394d', '#9b5de5'],
     TEAM_NAMES: ['Crimson Fleet', 'Violet Armada'],
+    BOT_ICON: '\uD83E\uDD16',
     FFA_COLORS: [
       '#f4a259', '#5bc0eb', '#e6394d', '#9bde7e',
       '#c77dff', '#ffd166', '#ff8fa3', '#7bdff2'

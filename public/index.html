@@ -24,7 +24,7 @@
     <div class="panel name-panel">
       <label for="playerName">Captain's name</label>
       <div class="row">
-        <input id="playerName" type="text" maxlength="16" placeholder="Sailor" autocomplete="off" spellcheck="false">
+        <input id="playerName" type="text" maxlength="16" placeholder="Sailor" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" spellcheck="false">
         <button id="saveName" class="btn ghost">Save</button>
       </div>
       <p class="hint">Remembered on this device.</p>
@@ -44,13 +44,13 @@
       <div class="panel-head"><h2>Create a lobby</h2></div>
       <div class="form-grid">
         <label for="lobbyName">Name</label>
-        <input id="lobbyName" type="text" maxlength="24" placeholder="The Salty Dog" autocomplete="off">
+        <input id="lobbyName" type="text" maxlength="24" placeholder="The Salty Dog" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" spellcheck="false">
 
-        <label for="lobbyPassword">Password</label>
-        <input id="lobbyPassword" type="password" maxlength="32" placeholder="optional" autocomplete="new-password">
+        <label for="lobbyCode">Passcode</label>
+        <input id="lobbyCode" class="masked" type="text" maxlength="32" placeholder="optional" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" spellcheck="false" autocapitalize="off">
 
         <label for="lobbyMode">Game type</label>
-        <select id="lobbyMode">
+        <select id="lobbyMode" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore>
           <option value="dm">Death match &mdash; every ship for itself</option>
           <option value="tdm">Team death match &mdash; two fleets</option>
         </select>
@@ -99,16 +99,13 @@
     <!-- top left: scoreboard -->
     <div class="hud-scores" id="scoreboard"></div>
 
-    <!-- top right: wind + minimap -->
+    <!-- top right: minimap + wind readout -->
     <div class="hud-right">
-      <div class="wind-box">
-        <canvas id="windDial" width="132" height="132"></canvas>
-        <div class="wind-meta">
-          <span class="label">WIND</span>
-          <span id="windSpeed" class="value">&ndash;</span>
-        </div>
-      </div>
       <canvas id="minimap" class="minimap" width="190" height="190"></canvas>
+      <div class="wind-meta">
+        <span class="label">WIND</span>
+        <span id="windSpeed" class="value">&ndash;</span>
+      </div>
     </div>
 
     <!-- bottom: own ship status -->
@@ -145,6 +142,10 @@
     </div>
 
     <div id="killfeed" class="killfeed"></div>
+
+    <div id="killBanner" class="kill-banner hidden">
+      <div id="killMain" class="kb-main"></div>
+    </div>
 
     <div class="hud-help" id="helpBox">
       <b>&larr; &rarr;</b> steer &nbsp; <b>&uarr;</b> boost &nbsp;

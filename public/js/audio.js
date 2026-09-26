@@ -285,6 +285,20 @@
           tone({ type: 'square', f0: 1660, f1: 1660, dur: 0.05, vol: 0.06 * v, delay: 0.06 });
           break;
 
+        case 'kill': {
+          // A bright rising sting when you sink someone.
+          var base = 523.25;
+          var notes = [1, 1.25];
+          for (var k2 = 0; k2 < notes.length; k2++) {
+            var last = k2 === notes.length - 1;
+            tone({ type: 'sawtooth', f0: base * notes[k2], f1: base * notes[k2], dur: last ? 0.5 : 0.12,
+              vol: 0.20 * v, delay: k2 * 0.075, attack: 0.005 });
+            tone({ type: 'square', f0: base * notes[k2] / 2, f1: base * notes[k2] / 2, dur: last ? 0.5 : 0.12,
+              vol: 0.09 * v, delay: k2 * 0.075, attack: 0.005 });
+          }
+          break;
+        }
+
         case 'fanfare': {
           // A short brass fanfare: a rising call, then a chord that rings
           // out over a low root, with a bright cymbal-like shimmer under it.

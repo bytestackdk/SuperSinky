@@ -312,7 +312,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   if (!after || !before) { console.log('\n  aborting input checks'); srv.kill('SIGKILL'); process.exit(1); }
   check('firing side applied', after[5] === -1, 'side=' + after[5]);
   check('boost was spent while held', after[15] < 1, 'boost=' + after[15]);
-  check('ship tuple carries the full state', after.length === 20, 'len=' + after.length);
+  check('ship tuple carries the full state', after.length === 21, 'len=' + after.length);
   check('boost reserve is reported', after[15] >= 0 && after[15] <= 1, 'boost=' + after[15]);
   const turned = Math.abs(after[3] - before[3]) > 0.15;
   check('steering applied', turned, 'angle ' + before[3].toFixed(2) + ' -> ' + after[3].toFixed(2));
@@ -415,10 +415,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await sleep(2500);
 
     const snaps = endInbox.filter((m) => m.t === 's');
-    check('a fresh round starts with the full clock',
-      snaps.length > 0 && snaps[0].rt > 590, snaps.length ? snaps[0].rt : 'none');
-    check('a fresh round starts with the whole map in play',
-      snaps[0].sz[0] === 0 && snaps[0].sz[2] === W, JSON.stringify(snaps[0].sz));
+    check('a fresh round starts with the full seven-minute clock',
+      snaps.length > 0 && snaps[0].rt > 410, snaps.length ? snaps[0].rt : 'none');
+    // The round opens partway through the shrink schedule (the quiet
+    // opening minutes are skipped), so the map starts already part closed
+    // rather than at the full world size.
+    check('a fresh round starts already part closed in',
+      snaps[0].sz[0] > 0 && snaps[0].sz[2] < W, JSON.stringify(snaps[0].sz));
 
     // Ending it by hand must produce the same standings payload the clock
     // running out would.

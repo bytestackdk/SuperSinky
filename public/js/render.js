@@ -201,7 +201,7 @@
   }
 
   Renderer.prototype._initStreaks = function () {
-    for (var i = 0; i < 120; i++) {
+    for (var i = 0; i < 85; i++) {
       this.streaks.push({
         x: Math.random(), y: Math.random(),
         len: rnd(26, 78),
@@ -213,10 +213,22 @@
     }
   };
 
+  // The most this canvas's backing store is ever allowed to hold - a shade
+  // over 1080p at a clean 2x. Capping devicePixelRatio at 2 still lets a
+  // 4K screen in full screen ask for tens of millions of backing-store
+  // pixels every frame, which is the actual cost; bounding the backing
+  // store itself keeps every fill, gradient and pattern operation cheap
+  // regardless of monitor size, at the cost of a little softness on the
+  // very largest screens.
+  var MAX_BACKING_PIXELS = 1920 * 1080 * 2.1;
+
   Renderer.prototype.resize = function () {
-    this.dpr = Math.min(2, global.devicePixelRatio || 1);
     var w = this.canvas.clientWidth || global.innerWidth;
     var h = this.canvas.clientHeight || global.innerHeight;
+    var dpr = Math.min(2, global.devicePixelRatio || 1);
+    var pixels = w * h * dpr * dpr;
+    if (pixels > MAX_BACKING_PIXELS) dpr *= Math.sqrt(MAX_BACKING_PIXELS / pixels);
+    this.dpr = Math.max(0.75, dpr);
     this.canvas.width = Math.round(w * this.dpr);
     this.canvas.height = Math.round(h * this.dpr);
     this.w = w; this.h = h;
@@ -329,7 +341,7 @@
   };
 
   /**
-   * The wind has to be readable without looking at the compass, so the water
+   * The wind has to be readable from the sea itself (there is no compass), so the water
    * carries it: streaks and arrowheads racing downwind, whitecaps breaking in
    * a fresh breeze, and a wash of gust bands moving over the surface. All of
    * it scales with strength, so a dying breeze visibly goes slack.
@@ -339,9 +351,10 @@
     var ca = Math.cos(wind.dir), sa = Math.sin(wind.dir) * TILT;
     var str = wind.strength;
     // Remap 0.4..1.0 onto 0..1 so the weakest breeze still shows something
-    // and a strong one is unmistakable.
+    // and a strong one is unmistakable. Kept fairly subtle overall - this is
+    // a cue, not the main event on screen.
     var pow = clamp((str - C.WIND_MIN) / (C.WIND_MAX - C.WIND_MIN), 0, 1);
-    var vis = 0.35 + 0.65 * pow;
+    var vis = 0.24 + 0.46 * pow;
 
     ctx.save();
     ctx.lineCap = 'round';
@@ -362,8 +375,8 @@
 
       if (s.cap && pow > 0.45) {
         // Whitecaps: short bright dashes across the wind, breaking.
-        ctx.strokeStyle = 'rgba(255,255,255,' + (alpha * 1.5).toFixed(3) + ')';
-        ctx.lineWidth = 2.6;
+        ctx.strokeStyle = 'rgba(255,255,255,' + (alpha * 1.3).toFixed(3) + ')';
+        ctx.lineWidth = 2.1;
         ctx.beginPath();
         ctx.moveTo(x - sa * 5, y + ca * 5 * TILT);
         ctx.lineTo(x + sa * 5, y - ca * 5 * TILT);
@@ -372,7 +385,7 @@
       }
 
       ctx.strokeStyle = 'rgba(214,242,252,' + alpha.toFixed(3) + ')';
-      ctx.lineWidth = 1.6 + 1.4 * pow;
+      ctx.lineWidth = 1.3 + 1.0 * pow;
       ctx.beginPath();
       ctx.moveTo(x, y);
       ctx.lineTo(ex, ey);
@@ -382,8 +395,8 @@
         // A small chevron at the head, pointing the way the wind blows.
         var hw = 4 + 3 * pow;
         var bx = ex - ca * hw * 1.7, by = ey - sa * hw * 1.7;
-        ctx.strokeStyle = 'rgba(232,250,255,' + (alpha * 1.25).toFixed(3) + ')';
-        ctx.lineWidth = 1.8 + 1.2 * pow;
+        ctx.strokeStyle = 'rgba(232,250,255,' + (alpha * 1.1).toFixed(3) + ')';
+        ctx.lineWidth = 1.4 + 0.9 * pow;
         ctx.beginPath();
         ctx.moveTo(bx - sa * hw, by + ca * hw * TILT);
         ctx.lineTo(ex, ey);
@@ -664,6 +677,7 @@
     super: 'Super Shot',
     rapid: 'Rapid Fire',
     range: 'Long Range',
+    ram: 'Ram Damage',
     repair_s: 'Repairs +' + C.REPAIR_S_AMOUNT,
     repair_l: 'Repairs +' + C.REPAIR_L_AMOUNT
   };
@@ -674,6 +688,7 @@
     super: { col: '#e6394d', ring: '#ff8fa3' },
     rapid: { col: '#f4a259', ring: '#ffc489' },
     range: { col: '#c77dff', ring: '#e0c3ff' },
+    ram: { col: '#cd854b', ring: '#e0a56e' },
     repair_s: { col: '#64c98a', ring: '#9bde7e' },
     repair_l: { col: '#39b06a', ring: '#9bde7e' }
   };
@@ -778,6 +793,27 @@
         ctx.fillStyle = look.ring;
         ctx.beginPath(); ctx.arc(8.5 * z, 0, 2.6 * z, 0, TAU); ctx.fill();
         ctx.restore();
+        break;
+      case 'ram':
+        // An iron ram's beak, driving forward into an impact burst.
+        ctx.beginPath();
+        ctx.moveTo(9 * z, 0);
+        ctx.lineTo(-5 * z, -6 * z);
+        ctx.lineTo(-2 * z, 0);
+        ctx.lineTo(-5 * z, 6 * z);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = look.ring;
+        ctx.lineWidth = 1.4 * z;
+        ctx.stroke();
+        ctx.lineWidth = 1.8 * z;
+        for (var ra = 0; ra < 4; ra++) {
+          var aa = -Math.PI / 4 + ra * (Math.PI / 2);
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(aa) * 7 * z, Math.sin(aa) * 7 * z);
+          ctx.lineTo(Math.cos(aa) * 10.5 * z, Math.sin(aa) * 10.5 * z);
+          ctx.stroke();
+        }
         break;
     }
   };
@@ -992,6 +1028,36 @@
     var list = state.ships.filter(function (s) { return s.alive; });
     list.sort(function (a, b) { return a.y - b.y; });
     for (var i = 0; i < list.length; i++) this.drawShip(state, list[i]);
+  };
+
+  /**
+   * Below half health a ship trails smoke from her deck, thicker and darker
+   * the closer she is to going down. Rate-based so it reads the same at any
+   * frame rate.
+   */
+  Renderer.prototype.emitDamageSmoke = function (state, dt) {
+    for (var i = 0; i < state.ships.length; i++) {
+      var s = state.ships[i];
+      if (!s.alive) continue;
+      var frac = s.hp / C.SHIP_HP;
+      if (!(frac < 0.5)) continue;
+      var hurt = 1 - frac / 0.5;                  // 0 at half health .. 1 near sinking
+      var rate = 5 + 22 * hurt;                   // puffs per second
+      var n = Math.floor(rate * dt + Math.random());
+      var shade = Math.round(150 - 95 * hurt);    // grey smoke going black
+      for (var k = 0; k < n; k++) {
+        var along = rnd(-C.SHIP_HALF_LEN * 0.6, C.SHIP_HALF_LEN * 0.5);
+        this.particles.spawn({
+          t: 'smoke',
+          x: s.x + Math.cos(s.angle) * along + rnd(-5, 5),
+          y: s.y + Math.sin(s.angle) * along + rnd(-4, 4),
+          vx: rnd(-6, 6), vy: rnd(-6, 6),
+          life: rnd(1.0, 2.0), max: 2.0, r: rnd(3.5, 7) * (0.8 + 0.5 * hurt),
+          damp: 0.96, drift: 1.1, col: shade + ',' + (shade - 4) + ',' + (shade - 8),
+          z: rnd(8, 16), vz: 26, grav: 6
+        });
+      }
+    }
   };
 
   Renderer.prototype.drawShip = function (state, s) {
@@ -1249,8 +1315,17 @@
       ? [{ along: 12, h: 30, w: 15 }, { along: -3, h: 36, w: 18 }, { along: -17, h: 26, w: 13 }]
       : [{ along: 8, h: 29, w: 14 }, { along: -11, h: 33, w: 16 }];
 
-    // Stack 0 and 1 are the small suit of sails; 2 and 3 grow it.
-    var suit = 0.80 + 0.17 * Math.max(0, stacks - 1);
+    // Stack 0 and 1 are the small suit of sails; 2 and 3 grow it. Past
+    // that the canvas stops growing (it would swamp the hull) and instead
+    // turns steadily more golden up to the stack cap.
+    var SAIL_GROW_MAX = 3;
+    var suit = 0.80 + 0.17 * Math.max(0, Math.min(stacks, SAIL_GROW_MAX) - 1);
+    var gold = clamp((stacks - SAIL_GROW_MAX) / (C.SAIL_MAX_STACK - SAIL_GROW_MAX), 0, 1);
+    var cloth = function (r, g, b) {
+      // Blend plain canvas toward a rich gold as the extra stacks pile up.
+      return 'rgba(' + Math.round(lerp(r, 236, gold)) + ',' + Math.round(lerp(g, 184, gold)) +
+        ',' + Math.round(lerp(b, 58, gold)) + ',0.97)';
+    };
 
     for (var i = 0; i < masts.length; i++) {
       var m = masts[i];
@@ -1285,9 +1360,9 @@
       var bx = Math.cos(wind.dir) * belly, by = Math.sin(wind.dir) * belly * TILT;
 
       var grad = ctx.createLinearGradient(px - yx, topY - yy, px + yx, topY + yy);
-      grad.addColorStop(0, 'rgba(226,218,196,0.97)');
-      grad.addColorStop(0.5, 'rgba(248,244,232,0.97)');
-      grad.addColorStop(1, 'rgba(214,205,182,0.97)');
+      grad.addColorStop(0, cloth(226, 218, 196));
+      grad.addColorStop(0.5, cloth(248, 244, 232));
+      grad.addColorStop(1, cloth(214, 205, 182));
       ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.moveTo(px - yx, topY - yy);
@@ -1301,9 +1376,11 @@
       ctx.lineWidth = 0.9 * z;
       ctx.stroke();
 
-      // A green cast on the canvas while she is carrying extra sail.
-      if (stacks > 0) {
-        ctx.fillStyle = 'rgba(155,222,126,' + (0.07 * stacks).toFixed(3) + ')';
+      // A green cast on the canvas while she is carrying extra sail; it
+      // gives way to the gold once the sails have stopped growing.
+      var green = Math.min(stacks, SAIL_GROW_MAX) * 0.07 * (1 - gold);
+      if (green > 0) {
+        ctx.fillStyle = 'rgba(155,222,126,' + green.toFixed(3) + ')';
         ctx.fill();
       }
     }
@@ -1339,7 +1416,7 @@
     ctx.textBaseline = 'alphabetic';
     ctx.font = (isMe ? 'bold ' : '') + Math.max(10, Math.round(12 * z)) + 'px "Trebuchet MS", sans-serif';
 
-    var label = s.name + (s.isBot ? ' ⚙' : '');
+    var label = s.isBot ? C.BOT_ICON + ' ' + s.name : s.name;
     ctx.lineWidth = 3;
     ctx.strokeStyle = 'rgba(0,10,18,0.85)';
     ctx.strokeText(label, x, top - 5 * z);
@@ -1771,6 +1848,7 @@
     this.drawPowerups(state);
     this.drawWrecks(dt);
     this.drawShips(state);
+    this.emitDamageSmoke(state, dt);
     this.drawParticles();
     this.drawZoneBorder(state);
     this.drawProjectiles(state);
@@ -1799,90 +1877,6 @@
   // =====================================================================
   // HUD canvases
   // =====================================================================
-
-  Renderer.prototype.drawWindDial = function (canvas, wind, shipAngle) {
-    var ctx = canvas.getContext('2d');
-    var w = canvas.width, h = canvas.height;
-    var cx = w / 2, cy = h / 2 - 7, r = 42;
-    var pow = clamp((wind.strength - C.WIND_MIN) / (C.WIND_MAX - C.WIND_MIN), 0, 1);
-    ctx.clearRect(0, 0, w, h);
-
-    // Dial face
-    ctx.fillStyle = 'rgba(6,30,48,0.55)';
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.fill();
-    ctx.strokeStyle = 'rgba(217,164,65,0.55)';
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.stroke();
-
-    // Strength arc around the rim - fills and warms as it pipes up.
-    var strCol = pow < 0.34 ? '#7bdff2' : (pow < 0.7 ? '#9bde7e' : '#ffbe5c');
-    ctx.strokeStyle = strCol;
-    ctx.lineWidth = 5;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.arc(cx, cy, r - 1, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0.04, pow));
-    ctx.stroke();
-
-    ctx.fillStyle = 'rgba(205,194,166,0.55)';
-    ctx.font = 'bold 10px "Trebuchet MS", sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('N', cx, cy - r + 11);
-    ctx.fillText('S', cx, cy + r - 11);
-    ctx.fillText('W', cx - r + 11, cy);
-    ctx.fillText('E', cx + r - 11, cy);
-
-    // Your own heading, as a thin ghost needle behind the wind arrow.
-    if (shipAngle !== null && shipAngle !== undefined) {
-      ctx.save();
-      ctx.translate(cx, cy); ctx.rotate(shipAngle);
-      ctx.strokeStyle = 'rgba(242,234,214,0.42)';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([3, 3]);
-      ctx.beginPath(); ctx.moveTo(-r * 0.55, 0); ctx.lineTo(r * 0.7, 0); ctx.stroke();
-      ctx.restore();
-    }
-
-    // The wind arrow: big, solid, and pointing where the wind is going.
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(wind.dir);
-    var len = r * (0.52 + 0.40 * pow);
-    var head = 9 + 5 * pow;
-
-    ctx.shadowColor = strCol;
-    ctx.shadowBlur = 8 + 8 * pow;
-    ctx.fillStyle = strCol;
-
-    // Shaft with a feathered tail, drawn as one solid arrow.
-    ctx.beginPath();
-    ctx.moveTo(len + head * 0.9, 0);
-    ctx.lineTo(len - head * 0.2, -head);
-    ctx.lineTo(len - head * 0.2, -head * 0.38);
-    ctx.lineTo(-len, -head * 0.34);
-    ctx.lineTo(-len - head * 0.5, 0);
-    ctx.lineTo(-len, head * 0.34);
-    ctx.lineTo(len - head * 0.2, head * 0.38);
-    ctx.lineTo(len - head * 0.2, head);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-
-    // Speed lines behind the arrow when it is really blowing.
-    if (pow > 0.55) {
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(wind.dir);
-      ctx.strokeStyle = 'rgba(255,255,255,' + (0.30 * pow).toFixed(2) + ')';
-      ctx.lineWidth = 2;
-      for (var k = -1; k <= 1; k += 2) {
-        ctx.beginPath();
-        ctx.moveTo(-r * 0.9, k * (head + 5));
-        ctx.lineTo(-r * 0.3, k * (head + 5));
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
-  };
 
   Renderer.prototype.drawMinimap = function (canvas, state) {
     var ctx = canvas.getContext('2d');

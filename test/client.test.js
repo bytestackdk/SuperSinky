@@ -117,13 +117,13 @@ function makeEl(tag) {
 const elements = {};
 const IDS = [
   'screen-menu', 'screen-lobby', 'screen-game', 'playerName', 'saveName',
-  'refreshLobbies', 'lobbyList', 'lobbyName', 'lobbyPassword', 'lobbyMode',
+  'refreshLobbies', 'lobbyList', 'lobbyName', 'lobbyCode', 'lobbyMode',
   'createLobby', 'lobbyTitle', 'lobbySub', 'leaveLobby', 'crewCount',
   'removeBot', 'addBot', 'ffaBotControls', 'teamsWrap', 'botNote',
   'startGame', 'endMatch', 'startHint', 'hud', 'scoreboard', 'windSpeed',
   'ownName', 'scorePill', 'healthFill', 'healthText', 'reloadFill', 'reloadText',
   'sideLabel', 'gunLabel', 'buffs', 'respawn', 'respawnText', 'boostText',
-  'killfeed', 'helpBox', 'connLost', 'reconnectBtn', 'toast',
+  'killfeed', 'killBanner', 'killMain', 'helpBox', 'connLost', 'reconnectBtn', 'toast',
   'roundTimer', 'roundNote', 'zoneWarn', 'matchOver', 'matchOverTitle',
   'matchOverSub', 'standings', 'backToLobby'
 ];
@@ -131,7 +131,6 @@ for (const id of IDS) elements[id] = makeEl('div');
 elements.boostFill = makeEl('div');
 elements.menuScene = makeCanvas(1280, 720);
 elements.view = makeCanvas(1280, 720);
-elements.windDial = makeCanvas(110, 110);
 elements.minimap = makeCanvas(190, 190);
 // bars need a parentElement for the HUD class switching
 for (const id of ['healthFill', 'reloadFill', 'boostFill']) {
@@ -328,7 +327,6 @@ try {
   for (let f = 0; f < 90; f++) {
     const st = makeState(f * 0.05);
     renderer.draw(st, 1 / 60);
-    renderer.drawWindDial(elements.windDial, st.wind, st.me.angle);
     renderer.drawMinimap(elements.minimap, st);
     win.UI.updateHud(st);
     if (f === 10) renderer.explodeShip(1560, 1560, 1.1, '#e6394d');
@@ -413,11 +411,6 @@ try {
     renderer.drawWindField({ dir: 1.1, strength: strength });
   }
   check('wind field renders across the whole strength range', true);
-  for (const strength of [C.WIND_MIN, 0.7, C.WIND_MAX]) {
-    renderer.drawWindDial(elements.windDial, { dir: 2.4, strength: strength }, 0.5);
-    renderer.drawWindDial(elements.windDial, { dir: 2.4, strength: strength }, null);
-  }
-  check('wind dial renders at every strength, with and without a ship', true);
   check('boost bar is populated', /BOOST|BOOSTING/.test(elements.boostText.textContent),
     JSON.stringify(elements.boostText.textContent));
 
@@ -587,13 +580,27 @@ section('audio without WebAudio support');
 try {
   win.Sfx.setMuted(false);
   ['fire', 'hit', 'splash', 'rock', 'sink', 'pickup', 'ram', 'ground', 'whirl', 'spawn', 'ready',
-    'boost', 'shrink', 'gull', 'fanfare']
+    'boost', 'shrink', 'gull', 'fanfare', 'kill']
     .forEach((k) => win.Sfx.play(k, 0.8));
   win.Sfx.toggle();
   win.Sfx.resume();
   check('audio degrades gracefully with no AudioContext', true);
 } catch (e) {
   check('audio degrades gracefully with no AudioContext', false, e.message);
+}
+
+// ---------------------------------------------------------------------
+section('kill banner');
+try {
+  const UI = win.UI;
+  UI.showKillBanner('Victim', '#e6394d');
+  check('a kill shows the banner', /show/.test(elements.killBanner.className), elements.killBanner.className);
+  check('the banner names the victim', /You sank Victim/.test(elements.killMain.textContent),
+    JSON.stringify(elements.killMain.textContent));
+  UI.showKillBanner('Second', '#e6394d');
+  check('the banner only names the latest victim', !/Victim/.test(elements.killMain.textContent));
+} catch (e) {
+  check('kill banner', false, e.message + '\n' + e.stack);
 }
 
 // ---------------------------------------------------------------------
@@ -924,7 +931,7 @@ section('the whole client, driven by real server messages');
     FakeWS.CONNECTING = 0; FakeWS.OPEN = 1; FakeWS.CLOSING = 2; FakeWS.CLOSED = 3;
 
     const body = makeEl('body');
-    for (const id of ['view', 'menuScene', 'windDial', 'minimap']) els[id] = makeCanvas(1280, 720);
+    for (const id of ['view', 'menuScene', 'minimap']) els[id] = makeCanvas(1280, 720);
     const w = {
       devicePixelRatio: 1, innerWidth: 1280, innerHeight: 720,
       location: { protocol: 'http:', host: 'x', reload() {} },

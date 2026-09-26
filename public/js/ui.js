@@ -172,11 +172,10 @@
       var sw = el('span', 'swatch');
       sw.style.background = colorFor(p, state.mode);
       row.appendChild(sw);
-      var who = el('span', 'who', p.name);
+      var who = el('span', 'who', p.bot ? C.BOT_ICON + ' ' + p.name : p.name);
       if (p.id === myId) who.textContent += ' (you)';
       row.appendChild(who);
       if (p.host) row.appendChild(el('span', 'badge', 'host'));
-      if (p.bot) row.appendChild(el('span', 'badge', 'bot'));
       list.appendChild(row);
     });
 
@@ -299,6 +298,7 @@
       }
       if (me.rapid > 0) buffs.appendChild(el('span', 'buff rapid', 'Fire rate +' + me.rapid));
       if (me.range > 0) buffs.appendChild(el('span', 'buff range', 'Range +' + me.range));
+      if (me.ram > 0) buffs.appendChild(el('span', 'buff ram', 'Ram dmg +' + me.ram));
       if (me.superTime > 0) {
         buffs.appendChild(el('span', 'buff super', 'Super shot ' + me.superTime.toFixed(1) + 's'));
       }
@@ -353,14 +353,18 @@
     }
   }
 
+  // Names in the results carry a `bot` flag; bots get the robot marker.
+  function botLabel(r) {
+    return r.bot ? C.BOT_ICON + ' ' + r.name : r.name;
+  }
+
   function scoreRow(s, state) {
     var row = el('div', 'score-row' + (s.id === state.meId ? ' me' : '') + (s.alive ? '' : ' dead'));
     var dot = el('span', 'dot');
     dot.style.background = s.color;
     row.appendChild(dot);
-    var nm = el('span', 'nm', s.name);
+    var nm = el('span', 'nm', s.isBot ? C.BOT_ICON + ' ' + s.name : s.name);
     row.appendChild(nm);
-    if (s.isBot) row.appendChild(el('span', 'bt', 'BOT'));
     row.appendChild(el('span', 'pts', String(s.score)));
     return row;
   }
@@ -369,9 +373,27 @@
   // Kill feed
   // =====================================================================
 
-  function pushKill(html, teamKill) {
+  var bannerTimer = null;
+  /** The big centre-screen call when you sink someone. */
+  function showKillBanner(victimName, victimColor) {
+    var box = $('killBanner');
+    var main = $('killMain');
+    main.textContent = '';
+    main.appendChild(el('span', 'kb-verb', 'You sank '));
+    var who = el('span', 'kb-who', victimName);
+    who.style.color = victimColor;
+    main.appendChild(who);
+    // Restart the pop-in animation even if a banner is already up.
+    box.className = 'kill-banner';
+    void box.offsetWidth;
+    box.className = 'kill-banner show';
+    if (bannerTimer) clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(function () { box.className = 'kill-banner hidden'; }, 2000);
+  }
+
+  function pushKill(html, teamKill, mine) {
     var feed = $('killfeed');
-    var line = el('div', 'kill-line' + (teamKill ? ' tk' : ''));
+    var line = el('div', 'kill-line' + (teamKill ? ' tk' : '') + (mine ? ' mine' : ''));
     line.innerHTML = html;
     feed.appendChild(line);
     if (feed.children.length > 5) feed.removeChild(feed.firstChild);
@@ -398,7 +420,6 @@
     head.appendChild(el('span', 'dot', ''));
     head.appendChild(el('span', 'nm', 'Captain'));
     head.appendChild(el('span', 'num', 'Sunk'));
-    head.appendChild(el('span', 'num', 'Kills'));
     head.appendChild(el('span', 'num', 'Lost'));
     return head;
   }
@@ -442,9 +463,9 @@
     if (tied.length > 1) {
       banner.className = 'match-winner draw';
       banner.textContent = 'A draw \u2014 ' + top.score + (top.score === 1 ? ' ship' : ' ships') + ' each';
-      sub.textContent = tied.map(function (r) { return r.name; }).join(', ') + ' finish level.';
+      sub.textContent = tied.map(botLabel).join(', ') + ' finish level.';
     } else {
-      banner.textContent = '\u2691 ' + top.name;
+      banner.textContent = '\u2691 ' + botLabel(top);
       banner.style.color = C.FFA_COLORS[top.colorIdx % C.FFA_COLORS.length];
       sub.textContent = 'Wins with ' + top.score + (top.score === 1 ? ' ship sunk' : ' ships sunk') +
         ', losing ' + top.deaths + (top.deaths === 1 ? ' of her own.' : ' of her own.');
@@ -511,9 +532,8 @@
       ? C.TEAM_COLORS[r.team]
       : C.FFA_COLORS[r.colorIdx % C.FFA_COLORS.length];
     row.appendChild(dot);
-    row.appendChild(el('span', 'nm', r.name + (r.bot ? ' \u2699' : '')));
+    row.appendChild(el('span', 'nm', botLabel(r)));
     row.appendChild(el('span', 'num sunk', String(r.score)));
-    row.appendChild(el('span', 'num dim', String(r.kills)));
     row.appendChild(el('span', 'num dim', String(r.deaths)));
     return row;
   }
@@ -524,6 +544,7 @@
     renderLobbyList: renderLobbyList, renderLobby: renderLobby,
     setBotHandler: setBotHandler,
     updateHud: updateHud, pushKill: pushKill,
+    showKillBanner: showKillBanner,
     showStandings: showStandings, formatClock: formatClock
   };
 })(window);

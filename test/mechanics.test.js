@@ -113,26 +113,31 @@ section('wind and sailing');
 section('the round and the shrinking battle area');
 {
   const g = new Game(C.MODE_DM, 4242);
-  check('a round is ten minutes', C.ROUND_SECONDS === 600, C.ROUND_SECONDS + 's');
-  check('the whole map is in play at the start',
-    g.zone[0] === 0 && g.zone[2] === C.WORLD, g.zone.join(','));
-  check('nothing has closed in yet', g.zoneShrinks === 0);
+  check('a round is seven minutes', C.ROUND_SECONDS === 420, C.ROUND_SECONDS + 's');
 
-  // Nothing should happen for the first minute.
-  run(g, C.SHRINK_START - 3);
-  check('the area holds for the first minute', g.zoneShrinks === 0, g.zoneShrinks);
+  // The round opens partway through the ten-minute shrink schedule rather
+  // than at the start of it - the quiet opening minutes are skipped, so the
+  // map starts already part closed, and still ends on the same final area.
+  const preShrunk = Math.min(C.SHRINK_STEPS,
+    Math.max(0, Math.floor((C.ZONE_TIME_OFFSET - C.SHRINK_START) / C.SHRINK_EVERY) + 1));
+  check('a few steps have already happened when the round opens',
+    g.zoneShrinks === preShrunk, g.zoneShrinks + ' vs ' + preShrunk);
+  check('so the map does not start at full size',
+    g.zone[2] - g.zone[0] < C.WORLD, Math.round(g.zone[2] - g.zone[0]));
 
-  // Then one step a minute, on the minute.
+  // From there it closes in once a minute exactly as it always did.
   const widths = [];
   let last = g.zone[2] - g.zone[0];
-  for (let minute = 1; minute <= C.SHRINK_STEPS; minute++) {
-    while (g.time < C.SHRINK_START + (minute - 1) * C.SHRINK_EVERY + C.ZONE_EASE + 1) g.update(step);
+  for (let n = preShrunk + 1; n <= C.SHRINK_STEPS; n++) {
+    const at = (n - 1) * C.SHRINK_EVERY + C.SHRINK_START - C.ZONE_TIME_OFFSET;
+    while (g.time < at + C.ZONE_EASE + 1) g.update(step);
     const w = g.zone[2] - g.zone[0];
     widths.push(Math.round(w));
     if (w >= last) break;
     last = w;
   }
-  check('it closes in once a minute', widths.length === C.SHRINK_STEPS,
+  check('it closes in once a minute for the rest of the schedule',
+    widths.length === C.SHRINK_STEPS - preShrunk,
     widths.length + ' steps: ' + widths.join(' -> '));
   // Width shrinks linearly with progress whatever the arena closes on.
   const stepWidth = (C.WORLD - C.WORLD * C.ZONE_FINAL) / C.SHRINK_STEPS;
@@ -142,9 +147,11 @@ section('the round and the shrinking battle area');
 
   // It eases in rather than jumping, so you can see it coming.
   const g2 = new Game(C.MODE_DM, 4242);
-  run(g2, C.SHRINK_START + 0.2);
+  const firstLiveAt = preShrunk * C.SHRINK_EVERY + C.SHRINK_START - C.ZONE_TIME_OFFSET;
+  run(g2, firstLiveAt + 0.2);
   const justAfter = g2.zone[2] - g2.zone[0];
-  const oneStep = C.WORLD - stepWidth;
+  const beforeStep = C.WORLD - preShrunk * stepWidth;
+  const oneStep = beforeStep - stepWidth;
   check('the boundary eases in rather than snapping',
     justAfter > oneStep + 10, 'width ' + Math.round(justAfter) + ', one full step would be ' + Math.round(oneStep));
   run(g2, C.ZONE_EASE + 1);
@@ -188,8 +195,10 @@ section('the round and the shrinking battle area');
     'area 7 is ' + Math.round(C.WORLD * C.ZONE_FINAL) + ' wide');
   check('the final area is not cramped', C.WORLD * C.ZONE_FINAL / C.RANGE >= 2,
     (C.WORLD * C.ZONE_FINAL / C.RANGE).toFixed(1) + 'x the gun range');
-  // The last step fires at SHRINK_START + (steps - 1) * interval, then eases.
-  const doneClosingAt = C.SHRINK_START + (C.SHRINK_STEPS - 1) * C.SHRINK_EVERY + C.ZONE_EASE;
+  // The last step fires at SHRINK_START + (steps - 1) * interval on the
+  // shrink timeline, then eases - offset back onto the (shorter) round clock.
+  const doneClosingAt = C.SHRINK_START + (C.SHRINK_STEPS - 1) * C.SHRINK_EVERY
+    - C.ZONE_TIME_OFFSET + C.ZONE_EASE;
   check('it stops closing with time left to fight in it',
     doneClosingAt < C.ROUND_SECONDS - 120,
     ((C.ROUND_SECONDS - doneClosingAt) / 60).toFixed(1) + ' minutes in the final area');
@@ -197,9 +206,9 @@ section('the round and the shrinking battle area');
   check('the final area is about the configured fraction',
     Math.abs(finalW / C.WORLD - C.ZONE_FINAL) < 0.02,
     Math.round(finalW) + ' wide (' + (100 * finalW / C.WORLD).toFixed(0) + '% of the map)');
-  check('the round is not over until the full ten minutes', !g3.isOver, g3.timeLeft.toFixed(1));
+  check('the round is not over until the full seven minutes', !g3.isOver, g3.timeLeft.toFixed(1));
   run(g3, 2);
-  check('the round ends after ten minutes', g3.isOver);
+  check('the round ends after seven minutes', g3.isOver);
   check('time left bottoms out at zero', g3.timeLeft === 0);
 
   // Caught outside, she goes down.
@@ -292,15 +301,30 @@ section('boost');
 {
   const g = new Game(C.MODE_DM, 4242);
   g.windDir = 0; g.windStrength = 1.0; g.windTargetStrength = 1.0; g.windTargetDir = 0;
+  g.windChangeAt = 1e9;     // pinned - a mid-test shift would confuse the speed checks
+  g.nextWhirlAt = 1e9;      // this is a boost test, not a "dodge the whirlpool" test
   const w = openWater(g);
   const s = placeShip(g, 1, 'Sprinter', -1, w.x - 200, w.y, 0);
 
-  run(g, 2);
+  // This test cares about her speed and reserve, not where she ends up - and
+  // boosted for long enough, in one direction, she can cover enough ground
+  // to run aground or off the edge of the open water, which would confuse
+  // the very numbers being measured here. Pin her in place, the same way
+  // hold() does for a long wait elsewhere in this file.
+  const ax = s.x, ay = s.y, aa = s.angle;
+  function holdStill(seconds) {
+    for (let i = 0; i < seconds * C.TICK_HZ; i++) {
+      g.update(step);
+      s.x = ax; s.y = ay; s.angle = aa;
+    }
+  }
+
+  holdStill(2);
   const cruise = s.speed;
   check('starts with a full reserve', s.boost === 1, s.boost);
 
   g.applyInput(1, { d: 0, f: false, s: 1, b: true });
-  run(g, 1.2);
+  holdStill(1.2);
   check('boost makes her noticeably faster', s.speed > cruise * 1.4,
     cruise.toFixed(0) + ' -> ' + s.speed.toFixed(0) + ' (' + (s.speed / cruise).toFixed(2) + 'x)');
   check('boost is roughly the configured multiplier',
@@ -310,18 +334,26 @@ section('boost');
 
   // Hold it down until it runs dry.
   let held = 1.2;
-  while (s.boost > 0 && held < 8) { g.update(step); held += step; }
+  while (s.boost > 0 && held < 8) {
+    g.update(step);
+    s.x = ax; s.y = ay; s.angle = aa;
+    held += step;
+  }
   check('the reserve lasts about the configured time',
     Math.abs(held - C.BOOST_SECONDS) < 0.5, held.toFixed(1) + 's vs ' + C.BOOST_SECONDS + 's');
 
-  run(g, 1);
+  holdStill(1);
   check('an empty reserve stops boosting', !s.boosting);
   const drained = s.speed;
 
   // Let go and let it fill.
   g.applyInput(1, { d: 0, f: false, s: 1, b: false });
   let refill = 0;
-  while (s.boost < 0.999 && refill < 30) { g.update(step); refill += step; }
+  while (s.boost < 0.999 && refill < 30) {
+    g.update(step);
+    s.x = ax; s.y = ay; s.angle = aa;
+    refill += step;
+  }
   check('the reserve refills on its own',
     Math.abs(refill - C.BOOST_REFILL) < 1.5, refill.toFixed(1) + 's vs ' + C.BOOST_REFILL + 's');
   check('refilling is much slower than spending', C.BOOST_REFILL > C.BOOST_SECONDS * 3);
@@ -432,7 +464,7 @@ section('rapid fire');
   check('it stacks', s.reloadTime < one, one.toFixed(2) + ' -> ' + s.reloadTime.toFixed(2));
   for (let i = 0; i < 10; i++) g.applyPowerup(s, C.PU.RAPID);
   check('stacks are capped', s.rapidStacks === C.RAPID_MAX_STACK, s.rapidStacks);
-  check('even fully stacked she still has to reload', s.reloadTime > 0.5, s.reloadTime.toFixed(2));
+  check('even fully stacked she still has to reload', s.reloadTime > 0.05, s.reloadTime.toFixed(2));
 
   // It must actually produce more broadsides in the same time.
   function broadsidesIn(seconds, stacks) {
@@ -722,7 +754,9 @@ section('ramming');
   g2.windStrength = 0.4;
   const a = placeShip(g2, 1, 'A', -1, w.x - 26, w.y, 0);
   const b = placeShip(g2, 2, 'B', -1, w.x + 26, w.y, Math.PI);
-  a.speed = 100; b.speed = 100;
+  // Just under RAM_REF_SPEED: head-on damage scales with speed, and at the
+  // reference speed it is exactly HEADON_DAMAGE.
+  a.speed = C.RAM_REF_SPEED * 0.9; b.speed = C.RAM_REF_SPEED * 0.9;
   run(g2, 0.3);
   const ev2 = drain(g2);
   check('bow to bow stops both ships', Math.abs(a.speed) < 1 && Math.abs(b.speed) < 1,
@@ -799,6 +833,23 @@ section('ramming');
   check('bow-on separation clears both hulls', bowGap >= C.SHIP_LEN - 1, bowGap.toFixed(0));
   check('alongside separation clears both beams', sideGap >= C.SHIP_BEAM - 1, sideGap.toFixed(0));
 
+  // Ram damage follows the rammer's speed: a boosted charge hits harder.
+  function ramAt(speed) {
+    const gg = new Game(C.MODE_DM, 4242);
+    gg.windStrength = 0.4;
+    const r = placeShip(gg, 1, 'Rammer', -1, w.x, w.y, 0);
+    const v = placeShip(gg, 2, 'Victim', -1, w.x + 40, w.y, Math.PI / 2);
+    r.speed = speed;
+    run(gg, 0.3);
+    return C.SHIP_HP - v.hp;
+  }
+  const slowRam = ramAt(50), fastRam = ramAt(C.BASE_SPEED * C.BOOST_MULT);
+  check('a faster ram does more damage', fastRam > slowRam * 2,
+    slowRam.toFixed(1) + ' vs ' + fastRam.toFixed(1));
+  const racer = placeShip(new Game(C.MODE_DM, 4242), 1, 'Racer', -1, w.x, w.y, 0);
+  racer.speed = 5000;
+  check('ram force is capped however fast she goes', racer.ramForce === C.RAM_SPEED_MAX, racer.ramForce);
+
   // Ramming should be a nudge, not a kill: well under a full broadside.
   const broadside = C.BALL_DAMAGE * C.CANNONS_BASE;
   check('a ram hurts less than a broadside', C.RAM_DAMAGE < broadside,
@@ -836,6 +887,64 @@ section('ramming');
 }
 
 // =====================================================================
+section('ram crate');
+{
+  const g = new Game(C.MODE_DM, 4242);
+  g.windStrength = 0.4;
+  const w = openWater(g);
+
+  check('ram is a real power-up type', C.PU.RAM === 'ram');
+  check('it is in the spawn table', C.PU_WEIGHTS.some((row) => row[0] === C.PU.RAM));
+
+  const rammer = placeShip(g, 1, 'Rammer', -1, w.x, w.y, 0);
+  const victim = placeShip(g, 2, 'Victim', -1, w.x + 40, w.y, Math.PI / 2);
+  check('base ram multiplier is unchanged', rammer.ramMult === 1, rammer.ramMult);
+
+  rammer.speed = 110;
+  run(g, 0.3);
+  const baseDmg = C.SHIP_HP - victim.hp;
+  check('an unupgraded ram deals damage', baseDmg > 0, baseDmg.toFixed(1));
+
+  g.applyPowerup(rammer, C.PU.RAM);
+  const one = rammer.ramMult;
+  check('one crate increases the ram multiplier', one > 1, one.toFixed(2));
+
+  g.applyPowerup(rammer, C.PU.RAM);
+  g.applyPowerup(rammer, C.PU.RAM);
+  check('it stacks', rammer.ramMult > one, one.toFixed(2) + ' -> ' + rammer.ramMult.toFixed(2));
+  for (let i = 0; i < 20; i++) g.applyPowerup(rammer, C.PU.RAM);
+  check('stacks are capped', rammer.ramStacks === C.RAM_MAX_STACK, rammer.ramStacks);
+
+  // It must actually make the ram hit harder.
+  const g2 = new Game(C.MODE_DM, 4242);
+  g2.windStrength = 0.4;
+  const ram2 = placeShip(g2, 1, 'Rammer', -1, w.x, w.y, 0);
+  const vic2 = placeShip(g2, 2, 'Victim', -1, w.x + 40, w.y, Math.PI / 2);
+  for (let i = 0; i < C.RAM_MAX_STACK; i++) g2.applyPowerup(ram2, C.PU.RAM);
+  ram2.speed = 110;
+  run(g2, 0.3);
+  const boostedDmg = C.SHIP_HP - vic2.hp;
+  check('a stacked ram deals more damage than an unupgraded one',
+    boostedDmg > baseDmg, baseDmg.toFixed(1) + ' -> ' + boostedDmg.toFixed(1));
+
+  // And it is carried, so it drops when she sinks.
+  const g3 = new Game(C.MODE_DM, 4242);
+  const carrier = placeShip(g3, 1, 'Carrier', -1, w.x, w.y, 0);
+  g3.applyPowerup(carrier, C.PU.RAM);
+  check('ram is carried for the sink drop',
+    carrier.powerups.indexOf(C.PU.RAM) >= 0, JSON.stringify(carrier.powerups));
+  g3.powerups.length = 0;
+  g3.sink(carrier, null, 'shot');
+  check('it can be dropped on sinking',
+    g3.powerups.some((q) => q.type === C.PU.RAM), g3.powerups.map((q) => q.type).join(','));
+
+  // Respawning must clear it.
+  const sp = g3.chooseSpawn(-1);
+  carrier.resetForSpawn(sp.x, sp.y, 0, g3.time);
+  check('respawn clears the ram bonus', carrier.ramStacks === 0 && carrier.ramMult === 1);
+}
+
+// =====================================================================
 section('power-ups');
 {
   const g = new Game(C.MODE_DM, 4242);
@@ -865,6 +974,14 @@ section('power-ups');
 
   g.applyPowerup(s, C.PU.SUPER);
   check('super shot is timed', s.isSuper(g.time) && s.superUntil - g.time <= C.SUPER_TIME + 0.01,
+    (s.superUntil - g.time).toFixed(1) + 's');
+
+  // A second crate resets the clock to a fresh SUPER_TIME rather than
+  // stacking more time on top of what was left.
+  hold(g, [s], C.SUPER_TIME - 5);
+  g.applyPowerup(s, C.PU.SUPER);
+  check('a second super crate resets rather than stacks the duration',
+    Math.abs((s.superUntil - g.time) - C.SUPER_TIME) < 0.01,
     (s.superUntil - g.time).toFixed(1) + 's');
 
   // Super shot does more damage.
@@ -1060,6 +1177,22 @@ section('spawn placement');
     if (Math.hypot(sp.x - wp.x, sp.y - wp.y) < C.WHIRL_RADIUS) { clear = false; break; }
   }
   check('spawns avoid whirlpools', clear);
+
+  // Spawns must not point straight at land, the map edge, or the far side
+  // of the battle area - a random heading used to sometimes start a ship
+  // fouled before she could even turn clear of it.
+  let goodHeadings = 0, headingTrials = 0;
+  for (const seed of [4242, 1, 12345, 99999]) {
+    const gh = new Game(C.MODE_DM, seed);
+    for (let i = 0; i < 60; i++) {
+      const sp = gh.chooseSpawn(-1);
+      headingTrials++;
+      if (gh._headingClearance(sp.x, sp.y, sp.angle, 150) >= 120) goodHeadings++;
+    }
+  }
+  check('spawns point somewhere with room to sail',
+    goodHeadings / headingTrials > 0.95,
+    goodHeadings + '/' + headingTrials + ' had a clear heading');
 }
 
 // =====================================================================

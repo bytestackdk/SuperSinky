@@ -53,6 +53,7 @@ class Ship {
     this.sailStacks = 0;
     this.rapidStacks = 0;
     this.rangeStacks = 0;
+    this.ramStacks = 0;
     this.superUntil = 0;
     this.reloadAt = 0;
     this.protectUntil = 0;
@@ -79,6 +80,12 @@ class Ship {
   get sailMult() { return 1 + this.sailStacks * C.SAIL_BONUS; }
   get reloadTime() { return C.RELOAD * Math.pow(1 - C.RAPID_BONUS, this.rapidStacks); }
   get range() { return C.RANGE * (1 + this.rangeStacks * C.RANGE_BONUS); }
+  get ramMult() { return 1 + this.ramStacks * C.RAM_BONUS; }
+  // What this ship's bow is worth right now: ram crates times how fast she is going.
+  get ramForce() {
+    const pace = clamp(Math.abs(this.speed) / C.RAM_REF_SPEED, C.RAM_SPEED_MIN, C.RAM_SPEED_MAX);
+    return this.ramMult * pace;
+  }
   isSuper(now) { return now < this.superUntil; }
   isRegenerating(now) {
     return this.alive && this.hp < C.SHIP_HP && now - this.combatAt >= C.REGEN_DELAY;
@@ -93,6 +100,7 @@ class Ship {
     this.sailStacks = 0;
     this.rapidStacks = 0;
     this.rangeStacks = 0;
+    this.ramStacks = 0;
     this.superUntil = 0;
     this.boost = 1;
     this.boosting = false;
@@ -152,10 +160,13 @@ class Game {
     this.nextWhirlAt = rand(C.WHIRL_SPAWN[0], C.WHIRL_SPAWN[1]);
 
     // The battle area closes in a step at a time over the round, toward a
-    // patch of open water rather than the middle of the map.
+    // patch of open water rather than the middle of the map. The round
+    // itself is shorter than the full shrink timeline: it opens already
+    // this far into it, skipping the quiet opening minutes rather than
+    // playing them out, so the map starts smaller and still ends the same way.
     this.zoneFinal = this._chooseFinalArena();
-    this.zoneProgress = 0;
-    this.zoneShrinks = 0;
+    this.zoneShrinks = this._shrinksAt(C.ZONE_TIME_OFFSET);
+    this.zoneProgress = this.zoneShrinks / C.SHRINK_STEPS;
   }
 
   /**
@@ -336,10 +347,42 @@ class Game {
 
   removeShip(id) { this.ships.delete(id); }
 
+  /**
+   * A heading from (x, y) with plenty of open water ahead, so a freshly
+   * spawned ship never starts pointed straight at the shore, the map edge,
+   * or out the far side of the battle area - which left her fouled before
+   * she could even turn clear of it.
+   */
+  _openHeading(x, y) {
+    const look = 220;
+    const probes = 16;
+    const start = Math.random() * TAU;
+    let best = start, bestRoom = -1;
+    for (let i = 0; i < probes; i++) {
+      const a = start + (i / probes) * TAU;
+      const room = this._headingClearance(x, y, a, look);
+      if (room > bestRoom) { bestRoom = room; best = a; }
+    }
+    return best;
+  }
+
+  /** How far a ship could sail on this heading before fouling on something. */
+  _headingClearance(x, y, angle, look) {
+    const ca = Math.cos(angle), sa = Math.sin(angle);
+    const edge = C.SHIP_HALF_LEN + 20;
+    for (let d = 30; d <= look; d += 22) {
+      const px = x + ca * d, py = y + sa * d;
+      if (px < edge || py < edge || px > C.WORLD - edge || py > C.WORLD - edge) return d;
+      if (this.isLand(px, py)) return d;
+      if (!this.inZone(px, py, 0)) return d;
+    }
+    return look;
+  }
+
   /** Pick a quiet stretch of open water; in TDM, lean toward friends. */
   chooseSpawn(team) {
     if (!this.spawns.length) {
-      return { x: C.WORLD / 2, y: C.WORLD / 2, angle: Math.random() * TAU };
+      return { x: C.WORLD / 2, y: C.WORLD / 2, angle: this._openHeading(C.WORLD / 2, C.WORLD / 2) };
     }
 
     // Only water still inside the battle area is worth spawning on.
@@ -388,7 +431,7 @@ class Game {
       if (score > bestScore) { bestScore = score; best = cand; }
     }
 
-    return { x: best.x, y: best.y, angle: Math.random() * TAU };
+    return { x: best.x, y: best.y, angle: this._openHeading(best.x, best.y) };
   }
 
   // ---- input ---------------------------------------------------------
@@ -434,16 +477,22 @@ class Game {
   }
 
   /**
+   * How many shrink steps have fired by a given point on the (unshifted)
+   * shrink timeline - shared by the constructor, which starts partway
+   * through it, and the per-tick update, which continues from there.
+   */
+  _shrinksAt(t) {
+    if (t < C.SHRINK_START) return 0;
+    return Math.min(C.SHRINK_STEPS, Math.floor((t - C.SHRINK_START) / C.SHRINK_EVERY) + 1);
+  }
+
+  /**
    * Once a minute the battle area closes in another step. The boundary eases
    * inward over a few seconds rather than jumping, so you can see it coming
    * and still sail clear of it.
    */
   _updateZone(dt) {
-    let want = 0;
-    if (this.time >= C.SHRINK_START) {
-      want = Math.min(C.SHRINK_STEPS,
-        Math.floor((this.time - C.SHRINK_START) / C.SHRINK_EVERY) + 1);
-    }
+    const want = this._shrinksAt(this.time + C.ZONE_TIME_OFFSET);
     if (want > this.zoneShrinks) {
       this.zoneShrinks = want;
       this.events.push({ k: 'shrink', n: want, of: C.SHRINK_STEPS });
@@ -888,7 +937,9 @@ class Game {
         if (s.cannons < C.CANNONS_MAX) { s.cannons++; s.powerups.push(type); }
         break;
       case C.PU.SUPER:
-        s.superUntil = Math.max(s.superUntil, this.time) + C.SUPER_TIME;
+        // Does not stack - every crate simply resets the clock to a fresh
+        // full duration, rather than piling more time on top.
+        s.superUntil = this.time + C.SUPER_TIME;
         s.powerups.push(type);
         break;
       case C.PU.RAPID:
@@ -896,6 +947,9 @@ class Game {
         break;
       case C.PU.RANGE:
         if (s.rangeStacks < C.RANGE_MAX_STACK) { s.rangeStacks++; s.powerups.push(type); }
+        break;
+      case C.PU.RAM:
+        if (s.ramStacks < C.RAM_MAX_STACK) { s.ramStacks++; s.powerups.push(type); }
         break;
       case C.PU.REPAIR_S:
         s.hp = Math.min(C.SHIP_HP, s.hp + C.REPAIR_S_AMOUNT);
@@ -939,10 +993,11 @@ class Game {
           if (fresh(a) && fresh(b)) {
             // Bow to bow: both ships simply stop dead.
             a.collideAt = b.collideAt = now;
+            const aForce = a.ramForce, bForce = b.ramForce;
             a.speed = 0; b.speed = 0;
             a.stunUntil = now + C.STUN_TIME;
             b.stunUntil = now + C.STUN_TIME;
-            a.hp -= C.HEADON_DAMAGE; b.hp -= C.HEADON_DAMAGE;
+            a.hp -= C.HEADON_DAMAGE * bForce; b.hp -= C.HEADON_DAMAGE * aForce;
             this.markCombat(a); this.markCombat(b);
             this.events.push({ k: 'headon', x: round1((a.x + b.x) / 2), y: round1((a.y + b.y) / 2) });
           }
@@ -952,9 +1007,10 @@ class Game {
           if (fresh(rammer) && fresh(victim)) {
             rammer.collideAt = now;
             victim.collideAt = now;
+            const force = rammer.ramForce;   // read before the impact slows her
             rammer.speed *= 0.35;
             victim.stunUntil = now + C.STUN_TIME * 0.6;
-            victim.hp -= C.RAM_DAMAGE;
+            victim.hp -= C.RAM_DAMAGE * force;
             rammer.hp -= C.RAM_SELF_DAMAGE;
             this.markCombat(victim); this.markCombat(rammer);
             this.events.push({
@@ -1064,7 +1120,8 @@ class Game {
         s.boosting ? 1 : 0,
         s.rapidStacks,
         s.isRegenerating(now) ? 1 : 0,
-        s.rangeStacks
+        s.rangeStacks,
+        s.ramStacks
       ]);
     }
 
