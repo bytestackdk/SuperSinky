@@ -1144,8 +1144,7 @@
 
     ctx.restore();
 
-    // ---- bow wave & wake ----
-    if (s.speed > 18) this.drawBowWave(s, x, y + bob, z);
+    // ---- boost wash ----
     if (s.boosting) this.drawBoostWash(s, x, y + bob, z);
 
     // ---- masts and sails, standing upright ----
@@ -1233,27 +1232,6 @@
       ctx.lineTo(ax + 4.5, ay);
       ctx.stroke();
     }
-  };
-
-  Renderer.prototype.drawBowWave = function (s, x, y, z) {
-    var ctx = this.ctx;
-    var frac = clamp(s.speed / C.BASE_SPEED, 0, 1.4);
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(z, z * TILT);
-    ctx.rotate(s.angle);
-    ctx.globalAlpha = 0.28 + 0.34 * frac;
-    ctx.fillStyle = '#dff2fa';
-    var w = 6 + 9 * frac;
-    ctx.beginPath();
-    ctx.moveTo(C.SHIP_HALF_LEN - 1, 0);
-    ctx.quadraticCurveTo(C.SHIP_HALF_LEN + w * 0.8, -w * 0.55, C.SHIP_HALF_LEN + w * 0.2, -w);
-    ctx.quadraticCurveTo(C.SHIP_HALF_LEN - 4, -w * 0.4, C.SHIP_HALF_LEN - 1, 0);
-    ctx.moveTo(C.SHIP_HALF_LEN - 1, 0);
-    ctx.quadraticCurveTo(C.SHIP_HALF_LEN + w * 0.8, w * 0.55, C.SHIP_HALF_LEN + w * 0.2, w);
-    ctx.quadraticCurveTo(C.SHIP_HALF_LEN - 4, w * 0.4, C.SHIP_HALF_LEN - 1, 0);
-    ctx.fill();
-    ctx.restore();
   };
 
   /** White water thrown astern while the boost is engaged. */
