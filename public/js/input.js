@@ -16,7 +16,6 @@
     this.onEsc = null;
     this.onToggleHelp = null;
     this.onToggleMute = null;
-    this.onTaunt = null;
     this._bind();
   }
 
@@ -40,8 +39,6 @@
           self.state.s = 1; self.flush(true); break;
         case 'KeyS':
           self.state.s = -self.state.s; self.flush(true); break;
-        case 'KeyD':
-          if (self.onTaunt) self.onTaunt(); break;
         case 'KeyH':
           if (self.onToggleHelp) self.onToggleHelp(); break;
         case 'KeyM':

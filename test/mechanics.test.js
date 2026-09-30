@@ -463,7 +463,7 @@ section('rapid fire');
   g.applyPowerup(s, C.PU.RAPID);
   check('it stacks', s.reloadTime < one, one.toFixed(2) + ' -> ' + s.reloadTime.toFixed(2));
   for (let i = 0; i < 10; i++) g.applyPowerup(s, C.PU.RAPID);
-  check('stacks are capped', s.rapidStacks === C.RAPID_MAX_STACK, s.rapidStacks);
+  check('stacks are capped', s.rapidStacks === g.loadout.maxStack, s.rapidStacks);
   check('even fully stacked she still has to reload', s.reloadTime > 0.05, s.reloadTime.toFixed(2));
 
   // It must actually produce more broadsides in the same time.
@@ -482,7 +482,7 @@ section('rapid fire');
     return n;
   }
   const slowGuns = broadsidesIn(12, 0);
-  const fastGuns = broadsidesIn(12, C.RAPID_MAX_STACK);
+  const fastGuns = broadsidesIn(12, g.loadout.maxStack);
   check('a rapid-fire ship gets more broadsides away', fastGuns > slowGuns,
     slowGuns + ' -> ' + fastGuns + ' broadsides in 12s');
 
@@ -522,7 +522,7 @@ section('range crate');
   g.applyPowerup(s, C.PU.RANGE);
   check('it stacks', s.range > one, one.toFixed(0) + ' -> ' + s.range.toFixed(0));
   for (let i = 0; i < 10; i++) g.applyPowerup(s, C.PU.RANGE);
-  check('stacks are capped', s.rangeStacks === C.RANGE_MAX_STACK, s.rangeStacks);
+  check('stacks are capped', s.rangeStacks === g.loadout.maxStack, s.rangeStacks);
 
   // It must actually make the guns reach further.
   s.side = 1;
@@ -549,43 +549,6 @@ section('range crate');
   const sp = g2.chooseSpawn(-1);
   carrier.resetForSpawn(sp.x, sp.y, 0, g2.time);
   check('respawn clears the range bonus', carrier.rangeStacks === 0 && carrier.range === C.RANGE);
-}
-
-// =====================================================================
-section('taunts');
-{
-  const g = new Game(C.MODE_DM, 4242);
-  const w = openWater(g);
-  const s = placeShip(g, 1, 'Loudmouth', -1, w.x, w.y, 0);
-
-  check('the insult list is not empty', C.PIRATE_INSULTS.length > 0);
-
-  g.queueTaunt(1);
-  const ev = drain(g);
-  const taunt = ev.find((e) => e.k === 'taunt');
-  check('a taunt event is raised', !!taunt);
-  check('it names the shouting ship', taunt && taunt.v === 1);
-  check('it carries one of the configured insults',
-    taunt && C.PIRATE_INSULTS.indexOf(taunt.m) >= 0, taunt && taunt.m);
-
-  g.queueTaunt(1);
-  const ev2 = drain(g);
-  check('a second taunt right away is throttled', !ev2.some((e) => e.k === 'taunt'));
-
-  g.time += 2;
-  g.queueTaunt(1);
-  const ev3 = drain(g);
-  check('a taunt is allowed again once the cooldown passes', ev3.some((e) => e.k === 'taunt'));
-
-  g.queueTaunt(999);
-  const ev4 = drain(g);
-  check('a taunt for an unknown ship is ignored', !ev4.some((e) => e.k === 'taunt'));
-
-  s.alive = false;
-  g.time += 2;
-  g.queueTaunt(1);
-  const ev5 = drain(g);
-  check('a sunk ship cannot taunt', !ev5.some((e) => e.k === 'taunt'));
 }
 
 // =====================================================================
@@ -913,14 +876,14 @@ section('ram crate');
   g.applyPowerup(rammer, C.PU.RAM);
   check('it stacks', rammer.ramMult > one, one.toFixed(2) + ' -> ' + rammer.ramMult.toFixed(2));
   for (let i = 0; i < 20; i++) g.applyPowerup(rammer, C.PU.RAM);
-  check('stacks are capped', rammer.ramStacks === C.RAM_MAX_STACK, rammer.ramStacks);
+  check('stacks are capped', rammer.ramStacks === g.loadout.maxStack, rammer.ramStacks);
 
   // It must actually make the ram hit harder.
   const g2 = new Game(C.MODE_DM, 4242);
   g2.windStrength = 0.4;
   const ram2 = placeShip(g2, 1, 'Rammer', -1, w.x, w.y, 0);
   const vic2 = placeShip(g2, 2, 'Victim', -1, w.x + 40, w.y, Math.PI / 2);
-  for (let i = 0; i < C.RAM_MAX_STACK; i++) g2.applyPowerup(ram2, C.PU.RAM);
+  for (let i = 0; i < g2.loadout.maxStack; i++) g2.applyPowerup(ram2, C.PU.RAM);
   ram2.speed = 110;
   run(g2, 0.3);
   const boostedDmg = C.SHIP_HP - vic2.hp;
@@ -965,7 +928,7 @@ section('power-ups');
   g.applyPowerup(s, C.PU.CANNON);
   check('extra cannons stack', s.cannons === C.CANNONS_BASE + 2, s.cannons);
   for (let i = 0; i < 20; i++) g.applyPowerup(s, C.PU.CANNON);
-  check('cannons are capped', s.cannons === C.CANNONS_MAX, s.cannons);
+  check('cannons are capped', s.cannons === C.CANNONS_BASE + g.loadout.maxStack, s.cannons);
 
   const base = s.sailMult;
   g.applyPowerup(s, C.PU.SAIL);
@@ -1259,6 +1222,54 @@ section('friendly fire');
   run(g, 1.2);
   check('team damage is on - you can shoot your own side', b.hp < C.SHIP_HP,
     'hp=' + Math.round(b.hp));
+}
+
+// =====================================================================
+section('weapon loadouts');
+{
+  const UPGRADES = [C.PU.SAIL, C.PU.CANNON, C.PU.RAPID, C.PU.RANGE, C.PU.RAM];
+  function maxOut(loadout) {
+    const g = new Game(C.MODE_DM, 4242, loadout);
+    const w = openWater(g);
+    const s = placeShip(g, 1, 'Hoarder', -1, w.x, w.y, 0);
+    for (const t of UPGRADES) for (let i = 0; i < 20; i++) g.applyPowerup(s, t);
+    return { g, s };
+  }
+
+  const d = new Game(C.MODE_DM, 4242);
+  check('a game with no loadout uses the default', d.loadoutId === C.LOADOUT_DEFAULT, d.loadoutId);
+  check('an unknown loadout falls back to the default',
+    new Game(C.MODE_DM, 4242, 'bogus').loadoutId === C.LOADOUT_DEFAULT);
+
+  for (const [id, cap] of [['default', 4], ['nosuper', 4], ['max10', 10]]) {
+    const { s } = maxOut(id);
+    check(id + ': every upgrade caps at ' + cap,
+      s.sailStacks === cap && s.cannons === C.CANNONS_BASE + cap &&
+      s.rapidStacks === cap && s.rangeStacks === cap && s.ramStacks === cap,
+      [s.sailStacks, s.cannons, s.rapidStacks, s.rangeStacks, s.ramStacks].join(','));
+    check(id + ': only real pickups are carried for the sink drop',
+      s.powerups.length === cap * UPGRADES.length, s.powerups.length);
+  }
+
+  // No super cannons: never spawned, never dropped, never applied.
+  const ns = new Game(C.MODE_DM, 4242, 'nosuper');
+  let sawSuper = false;
+  for (let i = 0; i < 2000; i++) if (ns._randomPowerupType() === C.PU.SUPER) sawSuper = true;
+  check('nosuper: super crates never spawn', !sawSuper);
+  const w = openWater(ns);
+  const sh = placeShip(ns, 1, 'Plain', -1, w.x, w.y, 0);
+  ns.applyPowerup(sh, C.PU.SUPER);
+  check('nosuper: a super crate does nothing', !sh.isSuper(ns.time) && sh.powerups.length === 0);
+  sh.powerups = ['super', 'super', 'super'];
+  ns.powerups.length = 0;
+  ns.sink(sh, null, 'shot');
+  check('nosuper: a wreck never spills super crates',
+    ns.powerups.length > 0 && !ns.powerups.some((q) => q.type === C.PU.SUPER),
+    ns.powerups.map((q) => q.type).join(','));
+
+  let defaultSuper = false;
+  for (let i = 0; i < 2000; i++) if (d._randomPowerupType() === C.PU.SUPER) defaultSuper = true;
+  check('default: super crates still spawn', defaultSuper);
 }
 
 console.log('\n' + (fails === 0 ? 'ALL MECHANICS CHECKS PASSED' : fails + ' CHECK(S) FAILED'));

@@ -241,7 +241,7 @@ function handle(client, msg) {
 
     case 'create': {
       if (lobby) { client.error('Leave your current lobby first'); break; }
-      const res = manager.create(msg.name, msg.password, msg.mode, client);
+      const res = manager.create(msg.name, msg.password, msg.mode, msg.loadout, client);
       if (!res.ok) { client.error(res.error); break; }
       const joined = res.lobby.add(client);
       if (!joined.ok) { manager.destroy(res.lobby); client.error(joined.error); break; }
@@ -291,6 +291,14 @@ function handle(client, msg) {
       break;
     }
 
+    case 'loadout': {
+      if (!lobby) break;
+      if (lobby.hostId !== client.id) { client.error('Only the host can change the loadout'); break; }
+      const res = lobby.setLoadout(msg.loadout);
+      if (!res.ok) client.error(res.error);
+      break;
+    }
+
     case 'start': {
       if (!lobby) break;
       if (lobby.hostId !== client.id) { client.error('Only the host can weigh anchor'); break; }
@@ -310,12 +318,6 @@ function handle(client, msg) {
     case 'in': {
       if (!lobby || !lobby.game) break;
       lobby.game.applyInput(client.id, msg);
-      break;
-    }
-
-    case 'taunt': {
-      if (!lobby || !lobby.game) break;
-      lobby.game.queueTaunt(client.id);
       break;
     }
 

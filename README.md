@@ -102,6 +102,19 @@ each fleet has its own pair of buttons, so you can fill both sides — a full
 | Rapid fire | Shorter reload, −18% per stack (stacks up to 3: 2.1s down to 1.2s) |
 | Small / large repair | +25 / +60 health |
 
+How far each upgrade stacks depends on the lobby's **loadout**, which the host
+picks when creating the lobby (and can change between matches):
+
+| Loadout | Upgrade cap | Notes |
+| --- | --- | --- |
+| Default | 4 of each | |
+| No super cannons | 4 of each | Super shot crates never spawn or drop |
+| Max 10 upgrades | 10 of each | |
+
+The cap applies to sail, extra cannon, rapid fire, range and ram crates (so
+cannons top out at 2 + cap per side). Crates picked up past the cap are used up
+with no effect.
+
 Power-ups do not expire — a crate floats until somebody sails over it. The
 spawner keeps ten on the map at a time. Picking one up shows its name above the
 water, so you always know what you just got.

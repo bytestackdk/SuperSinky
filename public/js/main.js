@@ -302,10 +302,6 @@
           global.Sfx.play('shrink', 0.85);
           break;
 
-        case 'taunt':
-          renderer.addTaunt(e.v, e.m);
-          break;
-
       }
     }
   }
@@ -505,6 +501,7 @@
       global.addEventListener('resize', function () { renderer.resize(); });
     }
     renderer.resize();
+    renderer.sailMax = (C.LOADOUTS[m.loadout] || C.LOADOUTS[C.LOADOUT_DEFAULT]).maxStack;
     renderer.particles.list.length = 0;
     renderer.wrecks.length = 0;
     renderer.gulls.length = 0;
@@ -592,7 +589,8 @@
       t: 'create',
       name: name,
       password: $('lobbyCode').value,
-      mode: $('lobbyMode').value
+      mode: $('lobbyMode').value,
+      loadout: $('lobbyLoadout').value
     });
   };
 
@@ -601,6 +599,11 @@
   });
 
   $('leaveLobby').onclick = function () { net.send({ t: 'leave' }); };
+
+  UI.fillLoadoutSelects();
+  $('roomLoadout').onchange = function () {
+    net.send({ t: 'loadout', loadout: $('roomLoadout').value });
+  };
 
   // The per-team bot buttons in a team deathmatch lobby.
   UI.setBotHandler(function (action, team) { net.send({ t: action, team: team }); });
@@ -653,8 +656,6 @@
   };
 
   input.onToggleHelp = function () { $('helpBox').classList.toggle('hidden'); };
-
-  input.onTaunt = function () { net.send({ t: 'taunt' }); };
 
   input.onToggleMute = function () {
     var m = global.Sfx.toggle();

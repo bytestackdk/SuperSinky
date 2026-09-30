@@ -33,6 +33,34 @@
     return mode === C.MODE_TDM ? 'Team death match' : 'Death match';
   }
 
+  function loadoutLabel(id) {
+    return (C.LOADOUTS[id] || C.LOADOUTS[C.LOADOUT_DEFAULT]).name;
+  }
+
+  /** One-line summary of what a loadout allows, for the lobby hint. */
+  function loadoutBlurb(id) {
+    var lo = C.LOADOUTS[id] || C.LOADOUTS[C.LOADOUT_DEFAULT];
+    var txt = 'Up to ' + lo.maxStack + ' of each upgrade.';
+    if (lo.exclude.indexOf(C.PU.SUPER) >= 0) txt += ' No super cannon crates.';
+    return txt;
+  }
+
+  /** Fill every loadout <select> on the page from the shared table. */
+  function fillLoadoutSelects() {
+    var ids = ['lobbyLoadout', 'roomLoadout'];
+    for (var i = 0; i < ids.length; i++) {
+      var sel = $(ids[i]);
+      sel.innerHTML = '';
+      C.LOADOUT_ORDER.forEach(function (id) {
+        var o = document.createElement('option');
+        o.value = id;
+        o.textContent = C.LOADOUTS[id].name;
+        sel.appendChild(o);
+      });
+      sel.value = C.LOADOUT_DEFAULT;
+    }
+  }
+
   function colorFor(p, mode) {
     if (mode === C.MODE_TDM && p.team >= 0) return C.TEAM_COLORS[p.team];
     return C.FFA_COLORS[p.colorIdx % C.FFA_COLORS.length];
@@ -63,7 +91,7 @@
       main.appendChild(nameLine);
 
       var total = l.players + l.bots;
-      var meta = modeLabel(l.mode) + ' · ' + total + '/' + l.capacity + ' ships';
+      var meta = modeLabel(l.mode) + ' · ' + loadoutLabel(l.loadout) + ' · ' + total + '/' + l.capacity + ' ships';
       if (l.bots) meta += ' (' + l.bots + ' bot' + (l.bots > 1 ? 's' : '') + ')';
       main.appendChild(el('div', 'lr-meta', meta));
       row.appendChild(main);
@@ -83,7 +111,7 @@
 
   function renderLobby(state, myId) {
     $('lobbyTitle').textContent = state.name;
-    var sub = modeLabel(state.mode);
+    var sub = modeLabel(state.mode) + ' · ' + loadoutLabel(state.loadout);
     if (state.hasPassword) sub += ' · password protected';
     if (state.state === 'playing') sub += ' · match in progress';
     $('lobbySub').textContent = sub;
@@ -126,6 +154,12 @@
         ? 'You are the host. Start whenever your crew is ready.'
         : 'Waiting for the host to start the match.';
     }
+
+    var lsel = $('roomLoadout');
+    lsel.value = state.loadout;
+    lsel.disabled = !isHost || locked;
+    $('loadoutNote').textContent = loadoutBlurb(state.loadout) +
+      (isHost ? (locked ? ' It can be changed once the match ends.' : '') : ' Only the host can change it.');
 
     var endBtn = $('endMatch');
     endBtn.classList.toggle('hidden', !(isHost && state.state === 'playing'));
@@ -541,6 +575,7 @@
   global.UI = {
     $: $, el: el, toast: toast, showScreen: showScreen,
     modeLabel: modeLabel, colorFor: colorFor,
+    loadoutLabel: loadoutLabel, fillLoadoutSelects: fillLoadoutSelects,
     renderLobbyList: renderLobbyList, renderLobby: renderLobby,
     setBotHandler: setBotHandler,
     updateHud: updateHud, pushKill: pushKill,

@@ -54,6 +54,9 @@
           <option value="dm">Death match &mdash; every ship for itself</option>
           <option value="tdm">Team death match &mdash; two fleets</option>
         </select>
+
+        <label for="lobbyLoadout">Loadout</label>
+        <select id="lobbyLoadout" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore></select>
       </div>
       <button id="createLobby" class="btn primary wide">Create lobby</button>
     </div>
@@ -83,6 +86,14 @@
       </div>
       <div id="teamsWrap"></div>
       <p id="botNote" class="hint"></p>
+    </div>
+
+    <div class="panel">
+      <div class="form-grid">
+        <label for="roomLoadout">Loadout</label>
+        <select id="roomLoadout" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore></select>
+      </div>
+      <p id="loadoutNote" class="hint"></p>
     </div>
 
     <button id="startGame" class="btn primary wide">Weigh anchor</button>
@@ -150,7 +161,7 @@
     <div class="hud-help" id="helpBox">
       <b>&larr; &rarr;</b> steer &nbsp; <b>&uarr;</b> boost &nbsp;
       <b>Q / E</b> port &middot; starboard &nbsp; <b>S</b> swap side &nbsp;
-      <b>Space</b> fire &nbsp; <b>D</b> taunt &nbsp;
+      <b>Space</b> fire &nbsp;
       <b>M</b> mute &nbsp; <b>H</b> hide help &nbsp; <b>Esc</b> leave
     </div>
   </div>

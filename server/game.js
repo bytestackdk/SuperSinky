@@ -73,7 +73,6 @@ class Ship {
     // Far in the past, so the very first collision of a match still counts.
     this.groundHitAt = -1e9;
     this.collideAt = -1e9;
-    this.lastTauntAt = -1e9;
     this.bot = null;               // bot brain, when isBot
   }
 
@@ -111,7 +110,6 @@ class Ship {
     this.stunUntil = 0;
     this.groundHitAt = -1e9;
     this.collideAt = -1e9;
-    this.lastTauntAt = -1e9;
     this.input.turn = 0;
     this.input.fire = false;
     this.input.boost = false;
@@ -134,8 +132,11 @@ class Ship {
 // ---------------------------------------------------------------------------
 
 class Game {
-  constructor(mode, seed) {
+  constructor(mode, seed, loadout) {
     this.mode = mode;                       // C.MODE_DM | C.MODE_TDM
+    this.loadoutId = C.LOADOUTS[loadout] ? loadout : C.LOADOUT_DEFAULT;
+    this.loadout = C.LOADOUTS[this.loadoutId];
+    this.puWeights = C.PU_WEIGHTS.filter(([type]) => this.loadout.exclude.indexOf(type) < 0);
     this.def = M.makeMapDef(seed || ((Math.random() * 0xfffffff) | 0) + 1);
     this.tiles = null;
     this.spawns = [];
@@ -447,18 +448,6 @@ class Game {
 
   /** Anything that counts as being in action, which holds off repairs. */
   markCombat(ship) { if (ship) ship.combatAt = this.time; }
-
-  /** A shouted insult, shown as a speech bubble over the ship. */
-  queueTaunt(id) {
-    const s = this.ships.get(id);
-    if (!s || !s.alive) return;
-    if (this.time - s.lastTauntAt < 1.4) return;   // no spamming
-    s.lastTauntAt = this.time;
-    this.events.push({
-      k: 'taunt', v: id, x: round1(s.x), y: round1(s.y),
-      m: pick(C.PIRATE_INSULTS)
-    });
-  }
 
   // ---- main loop -----------------------------------------------------
 
@@ -800,13 +789,14 @@ class Game {
    * every wreck is worth sailing over.
    */
   dropPowerups(ship) {
-    const pool = ship.powerups.slice();
+    const pool = ship.powerups.filter((t) => this.loadout.exclude.indexOf(t) < 0);
     const drops = [];
 
     if (pool.length) {
       const n = Math.min(C.DROP_MAX, pool.length);
       for (let i = 0; i < n; i++) drops.push(pool.splice((Math.random() * pool.length) | 0, 1)[0]);
-    } else {
+    }
+    if (!drops.length) {
       drops.push(this._randomPowerupType());
     }
 
@@ -889,10 +879,10 @@ class Game {
 
   _randomPowerupType() {
     let total = 0;
-    for (const [, w] of C.PU_WEIGHTS) total += w;
+    for (const [, w] of this.puWeights) total += w;
     let r = Math.random() * total;
-    for (const [type, w] of C.PU_WEIGHTS) { r -= w; if (r <= 0) return type; }
-    return C.PU_WEIGHTS[0][0];
+    for (const [type, w] of this.puWeights) { r -= w; if (r <= 0) return type; }
+    return this.puWeights[0][0];
   }
 
   _updatePowerups(dt) {
@@ -929,12 +919,14 @@ class Game {
   }
 
   applyPowerup(s, type) {
+    if (this.loadout.exclude.indexOf(type) >= 0) return;
+    const max = this.loadout.maxStack;
     switch (type) {
       case C.PU.SAIL:
-        if (s.sailStacks < C.SAIL_MAX_STACK) { s.sailStacks++; s.powerups.push(type); }
+        if (s.sailStacks < max) { s.sailStacks++; s.powerups.push(type); }
         break;
       case C.PU.CANNON:
-        if (s.cannons < C.CANNONS_MAX) { s.cannons++; s.powerups.push(type); }
+        if (s.cannons < C.CANNONS_BASE + max) { s.cannons++; s.powerups.push(type); }
         break;
       case C.PU.SUPER:
         // Does not stack - every crate simply resets the clock to a fresh
@@ -943,13 +935,13 @@ class Game {
         s.powerups.push(type);
         break;
       case C.PU.RAPID:
-        if (s.rapidStacks < C.RAPID_MAX_STACK) { s.rapidStacks++; s.powerups.push(type); }
+        if (s.rapidStacks < max) { s.rapidStacks++; s.powerups.push(type); }
         break;
       case C.PU.RANGE:
-        if (s.rangeStacks < C.RANGE_MAX_STACK) { s.rangeStacks++; s.powerups.push(type); }
+        if (s.rangeStacks < max) { s.rangeStacks++; s.powerups.push(type); }
         break;
       case C.PU.RAM:
-        if (s.ramStacks < C.RAM_MAX_STACK) { s.ramStacks++; s.powerups.push(type); }
+        if (s.ramStacks < max) { s.ramStacks++; s.powerups.push(type); }
         break;
       case C.PU.REPAIR_S:
         s.hp = Math.min(C.SHIP_HP, s.hp + C.REPAIR_S_AMOUNT);

@@ -19,12 +19,13 @@ function sanitizeName(raw, fallback) {
 }
 
 class Lobby {
-  constructor(manager, name, password, mode, host) {
+  constructor(manager, name, password, mode, loadout, host) {
     this.manager = manager;
     this.id = 'L' + (lobbySeq++);
     this.name = name;
     this.password = password || '';
     this.mode = mode === C.MODE_TDM ? C.MODE_TDM : C.MODE_DM;
+    this.loadout = C.LOADOUTS[loadout] ? loadout : C.LOADOUT_DEFAULT;
     this.hostId = host ? host.id : null;
     this.members = new Map();          // clientId -> client
     this.bots = new Map();             // shipId -> { id, name, team, colorIdx, brain }
@@ -176,13 +177,23 @@ class Lobby {
     return { ok: true };
   }
 
+  // ---- settings --------------------------------------------------------
+
+  setLoadout(loadout) {
+    if (this.state === 'playing') return { ok: false, error: 'Wait for the match to end' };
+    if (!C.LOADOUTS[loadout]) return { ok: false, error: 'Unknown loadout' };
+    this.loadout = loadout;
+    this.broadcastLobby();
+    return { ok: true };
+  }
+
   // ---- match lifecycle -----------------------------------------------
 
   start() {
     if (this.state === 'playing') return { ok: false, error: 'Already under way' };
     if (this.members.size === 0) return { ok: false, error: 'Nobody in the lobby' };
 
-    this.game = new Game(this.mode);
+    this.game = new Game(this.mode, undefined, this.loadout);
     this.state = 'playing';
 
     for (const c of this.members.values()) {
@@ -251,6 +262,7 @@ class Lobby {
       t: 'start',
       you: client.id,
       mode: this.mode,
+      loadout: this.loadout,
       map: this.game.mapPayload(),
       roster: this.game.roster(),
       const: { tile: C.TILE, world: C.WORLD }
@@ -285,6 +297,7 @@ class Lobby {
       id: this.id,
       name: this.name,
       mode: this.mode,
+      loadout: this.loadout,
       hostId: this.hostId,
       state: this.state,
       hasPassword: !!this.password,
@@ -304,6 +317,7 @@ class Lobby {
       id: this.id,
       name: this.name,
       mode: this.mode,
+      loadout: this.loadout,
       players: this.members.size,
       bots: this.bots.size,
       capacity: this.capacity,
@@ -321,11 +335,11 @@ class LobbyManager {
     setInterval(() => this._flushList(), 300).unref();
   }
 
-  create(name, password, mode, host) {
+  create(name, password, mode, loadout, host) {
     const clean = String(name || '').replace(CTRL, '').trim().slice(0, C.LOBBY_NAME_MAX);
     if (!clean) return { ok: false, error: 'Give the lobby a name' };
     if (this.lobbies.size >= 200) return { ok: false, error: 'Server is at capacity' };
-    const lobby = new Lobby(this, clean, password, mode, host);
+    const lobby = new Lobby(this, clean, password, mode, loadout, host);
     this.lobbies.set(lobby.id, lobby);
     return { ok: true, lobby };
   }
