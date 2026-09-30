@@ -213,7 +213,7 @@ const { Game } = require(ROOT + '/server/game.js');
 const game = new Game(C.MODE_DM, 20250919);
 const payload = game.mapPayload();
 
-let terrain;
+let terrain, bakedImage;
 try {
   terrain = new win.Terrain(payload.def);
   const t0 = Date.now();
@@ -224,7 +224,10 @@ try {
   terrain.sampleHeights();
   const tSample = Date.now() - t0;
   const t1 = Date.now();
-  terrain.bakeRows(0, terrain.gw);
+  terrain.prepareBake();
+  bakedImage = terrain.image;
+  terrain.bakeColumns(0, terrain.bakeWidth());
+  terrain.finishBake();
   const tBake = Date.now() - t1;
   terrain.buildMinimap(190);
   terrain.ready = true;
@@ -254,8 +257,16 @@ if (terrain) {
   }
   check('client land matches server land', agree / total > 0.97, (100 * agree / total).toFixed(1) + '% of ' + total);
   check('minimap built', !!terrain.minimap);
-  const drew = calls.byName.fillRect || 0;
-  check('terrain actually drew cells', drew > 10000, drew + ' fillRect calls');
+  // The bake writes pixels directly; count how many it actually covered.
+  let land = 0, wash = 0;
+  const px = bakedImage.data;
+  for (let i = 3; i < px.length; i += 4) {
+    if (px[i] === 255) land++;
+    else if (px[i] > 0) wash++;
+  }
+  check('terrain actually drew land', land > 50000, land + ' opaque pixels');
+  check('terrain drew shallows and shadow over the sea', wash > 20000, wash + ' translucent pixels');
+  check('terrain bake was uploaded', (calls.byName.putImageData || 0) >= 1);
 }
 
 // ---------------------------------------------------------------------

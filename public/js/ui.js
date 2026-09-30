@@ -12,6 +12,25 @@
     return n;
   }
 
+  /*
+   * The HUD is refreshed every frame, but nearly all of it is unchanged
+   * from one frame to the next. Writing a DOM property - even to the same
+   * value - invalidates style and layout and repaints the panel, so these
+   * only touch the element when the value really differs.
+   */
+  function setText(n, v) {
+    v = String(v);
+    if (n && n._hudText !== v) { n._hudText = v; n.textContent = v; }
+  }
+  function setClass(n, v) {
+    if (n && n._hudClass !== v) { n._hudClass = v; n.className = v; }
+  }
+  function setWidth(n, frac) {
+    // A tenth of a percent is well under a pixel on any of these bars.
+    var v = (Math.round(frac * 1000) / 10) + '%';
+    if (n && n._hudWidth !== v) { n._hudWidth = v; n.style.width = v; }
+  }
+
   var toastTimer = null;
   function toast(msg, ok) {
     var t = $('toast');
@@ -256,27 +275,30 @@
   function updateRound(state) {
     var timer = $('roundTimer');
     if (timer) {
-      timer.textContent = formatClock(state.timeLeft);
-      timer.className = 'round-timer' + (state.timeLeft <= 30 ? ' low' : '');
+      setText(timer, formatClock(state.timeLeft));
+      setClass(timer, 'round-timer' + (state.timeLeft <= 30 ? ' low' : ''));
     }
 
     var note = $('roundNote');
     if (note) {
       var untilShrink = state.nextShrinkIn;
       if (state.shrinks >= C.SHRINK_STEPS) {
-        note.textContent = 'Final battle area';
-        note.className = 'round-note urgent';
+        setText(note, 'Final battle area');
+        setClass(note, 'round-note urgent');
       } else if (untilShrink !== null && untilShrink <= 10) {
-        note.textContent = 'Closing in ' + Math.ceil(untilShrink) + 's';
-        note.className = 'round-note urgent';
+        setText(note, 'Closing in ' + Math.ceil(untilShrink) + 's');
+        setClass(note, 'round-note urgent');
       } else {
-        note.textContent = 'Area ' + state.shrinks + ' / ' + C.SHRINK_STEPS;
-        note.className = 'round-note';
+        setText(note, 'Area ' + state.shrinks + ' / ' + C.SHRINK_STEPS);
+        setClass(note, 'round-note');
       }
     }
 
     var warn = $('zoneWarn');
-    if (warn) warn.classList.toggle('hidden', !state.meOutside);
+    if (warn && warn._hudOut !== state.meOutside) {
+      warn._hudOut = state.meOutside;
+      warn.classList.toggle('hidden', !state.meOutside);
+    }
   }
 
   function updateHud(state) {
@@ -288,64 +310,67 @@
     if (windEl) {
       if (me && me.alive) {
         var eff = sailEfficiency(me.angle, state.wind.dir);
-        windEl.textContent = windWord(state.wind.strength) + ' \u00b7 ' +
-          Math.round(eff * 100) + '% ' + pointOfSail(me.angle, state.wind.dir);
+        setText(windEl, windWord(state.wind.strength) + ' \u00b7 ' +
+          Math.round(eff * 100) + '% ' + pointOfSail(me.angle, state.wind.dir));
       } else {
-        windEl.textContent = windWord(state.wind.strength);
+        setText(windEl, windWord(state.wind.strength));
       }
     }
 
     // --- own ship card ---
     if (me) {
-      $('ownName').textContent = me.name;
-      $('scorePill').textContent = me.score >= 0 ? me.score : me.score;
+      setText($('ownName'), me.name);
+      setText($('scorePill'), me.score);
 
       var hpFrac = Math.max(0, Math.min(1, me.hp / C.SHIP_HP));
       var hpBar = $('healthFill').parentElement;
-      hpBar.className = 'bar health' + (hpFrac <= 0.25 ? ' critical' : (hpFrac <= 0.55 ? ' hurt' : ''));
-      $('healthFill').style.width = (hpFrac * 100) + '%';
-      $('healthText').textContent = Math.round(me.hp);
+      setClass(hpBar, 'bar health' + (hpFrac <= 0.25 ? ' critical' : (hpFrac <= 0.55 ? ' hurt' : '')));
+      setWidth($('healthFill'), hpFrac);
+      setText($('healthText'), Math.round(me.hp));
 
       var rl = Math.max(0, Math.min(1, me.reload));
       var rlBar = $('reloadFill').parentElement;
-      rlBar.className = 'bar reload' + (rl >= 1 ? ' ready' : '');
-      $('reloadFill').style.width = (rl * 100) + '%';
-      $('reloadText').textContent = rl >= 1 ? 'GUNS READY' : 'RELOADING';
+      setClass(rlBar, 'bar reload' + (rl >= 1 ? ' ready' : ''));
+      setWidth($('reloadFill'), rl);
+      setText($('reloadText'), rl >= 1 ? 'GUNS READY' : 'RELOADING');
 
       var boost = Math.max(0, Math.min(1, me.boost || 0));
       var boostBar = $('boostFill').parentElement;
-      boostBar.className = 'bar boost' +
-        (me.boosting ? ' firing' : (boost >= 1 ? ' full' : (boost < 0.12 ? ' empty' : '')));
-      $('boostFill').style.width = (boost * 100) + '%';
-      $('boostText').textContent = me.boosting
+      setClass(boostBar, 'bar boost' +
+        (me.boosting ? ' firing' : (boost >= 1 ? ' full' : (boost < 0.12 ? ' empty' : ''))));
+      setWidth($('boostFill'), boost);
+      setText($('boostText'), me.boosting
         ? 'BOOSTING'
-        : (boost >= 1 ? 'BOOST READY' : 'BOOST ' + Math.round(boost * 100) + '%');
+        : (boost >= 1 ? 'BOOST READY' : 'BOOST ' + Math.round(boost * 100) + '%'));
 
-      $('sideLabel').textContent = SIDE_NAME[String(me.side)] || '—';
-      $('gunLabel').textContent = me.cannons + ' / side';
+      setText($('sideLabel'), SIDE_NAME[String(me.side)] || '—');
+      setText($('gunLabel'), me.cannons + ' / side');
 
+      var chips = [];
+      if (me.sails > 0) chips.push(['buff sail', 'Sails +' + me.sails]);
+      if (me.cannons > C.CANNONS_BASE) chips.push(['buff', 'Guns +' + (me.cannons - C.CANNONS_BASE)]);
+      if (me.rapid > 0) chips.push(['buff rapid', 'Fire rate +' + me.rapid]);
+      if (me.range > 0) chips.push(['buff range', 'Range +' + me.range]);
+      if (me.ram > 0) chips.push(['buff ram', 'Ram dmg +' + me.ram]);
+      if (me.superTime > 0) chips.push(['buff super', 'Super shot ' + me.superTime.toFixed(1) + 's']);
+      if (me.regen) chips.push(['buff regen', 'Repairing']);
       var buffs = $('buffs');
-      buffs.innerHTML = '';
-      if (me.sails > 0) buffs.appendChild(el('span', 'buff sail', 'Sails +' + me.sails));
-      if (me.cannons > C.CANNONS_BASE) {
-        buffs.appendChild(el('span', 'buff', 'Guns +' + (me.cannons - C.CANNONS_BASE)));
+      var sig = JSON.stringify(chips);
+      if (buffs._hudSig !== sig) {
+        buffs._hudSig = sig;
+        buffs.innerHTML = '';
+        for (var ci = 0; ci < chips.length; ci++) buffs.appendChild(el('span', chips[ci][0], chips[ci][1]));
       }
-      if (me.rapid > 0) buffs.appendChild(el('span', 'buff rapid', 'Fire rate +' + me.rapid));
-      if (me.range > 0) buffs.appendChild(el('span', 'buff range', 'Range +' + me.range));
-      if (me.ram > 0) buffs.appendChild(el('span', 'buff ram', 'Ram dmg +' + me.ram));
-      if (me.superTime > 0) {
-        buffs.appendChild(el('span', 'buff super', 'Super shot ' + me.superTime.toFixed(1) + 's'));
-      }
-      if (me.regen) buffs.appendChild(el('span', 'buff regen', 'Repairing'));
 
       var resp = $('respawn');
+      if (resp._hudDead !== !me.alive) {
+        resp._hudDead = !me.alive;
+        resp.classList.toggle('hidden', me.alive);
+      }
       if (!me.alive) {
-        resp.classList.remove('hidden');
-        $('respawnText').textContent = me.respawnIn > 0
+        setText($('respawnText'), me.respawnIn > 0
           ? 'Refitting — back in ' + me.respawnIn.toFixed(1) + 's'
-          : 'Making sail...';
-      } else {
-        resp.classList.add('hidden');
+          : 'Making sail...');
       }
     }
 
@@ -355,6 +380,15 @@
   function renderScoreboard(state) {
     var board = $('scoreboard');
     var ships = state.ships.slice();
+
+    // Only rebuild when something shown on it has actually changed.
+    var sig = state.mode + '|' + state.meId;
+    for (var si = 0; si < ships.length; si++) {
+      var sh = ships[si];
+      sig += '|' + sh.id + ',' + sh.score + ',' + (sh.alive ? 1 : 0) + ',' + sh.team + ',' + sh.color + ',' + sh.name;
+    }
+    if (board._hudSig === sig) return;
+    board._hudSig = sig;
 
     if (state.mode === C.MODE_TDM) {
       var totals = [0, 0];

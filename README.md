@@ -210,7 +210,35 @@ The terrain is baked once into an offscreen canvas when a match starts, then
 blitted per frame. Baking samples the height field at 10-world-unit resolution
 (~194k samples). The island lobe positions are flattened and cached once per map
 rather than recomputed per sample — without that the bake took 2.5 seconds of
-blocked main thread; it is now a few hundred milliseconds behind a progress bar.
+blocked main thread.
+
+The image itself is written pixel by pixel, voxel-space style: each column is
+walked from the near edge of the map to the far one, interpolating the height
+grid, and every sample paints from its lifted top down to whatever nearer ground
+already covers it. So coastlines are smooth rather than stepped in 10-unit
+squares, slopes facing the camera open up into cliff faces, and the far sides of
+hills are hidden behind them. Light comes from the west-north-west: slopes are
+shaded against it, hills cast soft shadows across lower ground and onto the
+water, and the surf, wet sand and colour bands all blend rather than step. The
+whole bake is well under 100 ms in a browser, spread over frames behind the
+progress bar.
+
+### Keeping frames cheap
+
+- **Soft things are sprites.** Smoke, fire, spray and glows are stamped from
+  small cached gradient images rather than built as a path each; fire, embers
+  and flashes are added with `lighter` blending so a blast actually glows.
+- **Still props are sprites too.** Trees, houses, rocks and docks are drawn
+  once per kind and size and stamped; only windmills and lighthouses, which
+  move, are drawn live.
+- **No live `shadowBlur`.** Power-up emblems bake their glow into a sprite;
+  the battle-area border fakes its glow with a few wide faint strokes.
+- **Effects are rate-based**, so boost spray and burning wrecks emit the same
+  amount at 60 Hz or 144 Hz instead of flooding the particle budget.
+- **The HUD only touches the DOM when a value changes**, and the scoreboard
+  and buff chips rebuild only when their contents do. The minimap redraws at
+  the snapshot rate, and HUD panels skip `backdrop-filter`, which would
+  otherwise re-blur the moving sea behind them every frame.
 
 ---
 

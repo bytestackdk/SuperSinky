@@ -98,7 +98,6 @@ body.in-game .menu-scrim { display: none; }
 .panel {
   background: linear-gradient(180deg, rgba(10, 38, 62, .94), rgba(6, 27, 46, .95));
   border: 1px solid rgba(217, 164, 65, .32);
-  backdrop-filter: blur(3px);
   border-radius: var(--radius);
   padding: 16px 18px;
   margin-bottom: 18px;
@@ -259,12 +258,13 @@ select option { background: #0b2c46; }
 
 .hud-scores {
   position: absolute; top: 14px; left: 14px;
-  background: rgba(4, 22, 36, .74);
+  background: rgba(4, 22, 36, .8);
   border: 1px solid rgba(217, 164, 65, .28);
   border-radius: 10px;
   padding: 9px 11px;
   min-width: 188px;
-  backdrop-filter: blur(3px);
+  /* No backdrop-filter: over a canvas that repaints every frame, the blur
+     would have to be recomputed every frame too. */
 }
 
 .score-head {
@@ -315,12 +315,11 @@ select option { background: #0b2c46; }
 .hud-bottom { position: absolute; bottom: 14px; right: 14px; }
 
 .status-card {
-  background: rgba(4, 22, 36, .78);
+  background: rgba(4, 22, 36, .84);
   border: 1px solid rgba(217, 164, 65, .3);
   border-radius: 11px;
   padding: 10px 14px;
   width: 300px;
-  backdrop-filter: blur(3px);
 }
 
 .status-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }

@@ -375,7 +375,11 @@
     renderer.draw(state, dt);
 
     UI.updateHud(state);
-    renderer.drawMinimap($('minimap'), state);
+    // The minimap is a few pixels per ship; the snapshot rate is plenty.
+    if (now - (app.lastMinimap || 0) >= 1000 / C.SNAPSHOT_HZ) {
+      app.lastMinimap = now;
+      renderer.drawMinimap($('minimap'), state);
+    }
 
     // A short chime the moment the guns come back up.
     if (state.me) {

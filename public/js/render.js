@@ -18,22 +18,86 @@
   function rnd(a, b) { return a + Math.random() * (b - a); }
 
   // =====================================================================
+  // Sprites
+  // =====================================================================
+
+  /*
+   * Soft round things - smoke, fire, glows - are painted once into small
+   * offscreen canvases and stamped with drawImage. That is both far cheaper
+   * than building and filling a path per puff (the GPU batches repeated
+   * stamps of one image) and better looking, since each puff gets a proper
+   * soft falloff instead of a hard-edged disc.
+   */
+  var SPRITE_PX = 64;
+  var spriteCache = {};
+  var spriteCount = 0;
+
+  function makeCanvas(w, h) {
+    var c = document.createElement('canvas');
+    c.width = Math.max(1, Math.ceil(w));
+    c.height = Math.max(1, Math.ceil(h));
+    return c;
+  }
+
+  /** A radial blob. stops: [[offset, 'r,g,b', alpha], ...] */
+  function blobSprite(key, stops) {
+    var c = spriteCache[key];
+    if (c) return c;
+    c = makeCanvas(SPRITE_PX, SPRITE_PX);
+    var g2 = c.getContext('2d');
+    var h = SPRITE_PX / 2;
+    var g = g2.createRadialGradient(h, h, 0, h, h, h);
+    for (var i = 0; i < stops.length; i++) {
+      g.addColorStop(stops[i][0], 'rgba(' + stops[i][1] + ',' + stops[i][2] + ')');
+    }
+    g2.fillStyle = g;
+    g2.fillRect(0, 0, SPRITE_PX, SPRITE_PX);
+    // Colours come from a small, fixed palette, but guard against a runaway.
+    if (++spriteCount > 400) { spriteCache = {}; spriteCount = 0; }
+    spriteCache[key] = c;
+    return c;
+  }
+
+  function puffSprite(col) {
+    return blobSprite('puff:' + col, [[0, col, 1], [0.45, col, 0.72], [0.78, col, 0.22], [1, col, 0]]);
+  }
+  function glowSprite(col) {
+    return blobSprite('glow:' + col, [[0, '255,255,255', 1], [0.16, col, 0.95], [0.5, col, 0.35], [1, col, 0]]);
+  }
+
+  /** Stamp a sprite centred on (x, y), squashed vertically by the tilt. */
+  function stamp(ctx, spr, x, y, r, alpha, squash) {
+    if (alpha <= 0.004 || r <= 0.05) return;
+    var ry = r * (squash === undefined ? TILT : squash);
+    ctx.globalAlpha = alpha > 1 ? 1 : alpha;
+    ctx.drawImage(spr, x - r, y - ry, r * 2, ry * 2);
+  }
+
+  // =====================================================================
   // Particles
   // =====================================================================
 
-  function Particles() { this.list = []; }
+  var MAX_PARTICLES = 900;
+
+  function Particles() { this.list = []; this._evict = 0; }
 
   Particles.prototype.spawn = function (p) {
-    if (this.list.length > 900) this.list.shift();
+    // Full up: overwrite round-robin rather than shift()ing the whole array
+    // along for every new puff.
+    if (this.list.length >= MAX_PARTICLES) {
+      this.list[this._evict] = p;
+      this._evict = (this._evict + 1) % MAX_PARTICLES;
+      return;
+    }
     this.list.push(p);
   };
 
   Particles.prototype.update = function (dt, windDir, windStrength) {
     var wx = Math.cos(windDir) * windStrength * 26;
     var wy = Math.sin(windDir) * windStrength * 26;
-    var out = [];
-    for (var i = 0; i < this.list.length; i++) {
-      var p = this.list[i];
+    var list = this.list, n = 0;
+    for (var i = 0; i < list.length; i++) {
+      var p = list[i];
       p.life -= dt;
       if (p.life <= 0) continue;
       p.x += p.vx * dt;
@@ -42,9 +106,10 @@
       p.vx *= p.damp; p.vy *= p.damp;
       if (p.grav) p.z = (p.z || 0) + (p.vz = (p.vz || 0) - p.grav * dt) * dt;
       if (p.rot !== undefined) p.rot += p.spin * dt;
-      out.push(p);
+      list[n++] = p;
     }
-    this.list = out;
+    list.length = n;
+    if (this._evict >= n) this._evict = 0;
   };
 
   Particles.prototype.burst = function (kind, x, y, opts) {
@@ -193,6 +258,7 @@
     this.showNames = true;
     this.time = 0;
     this.shake = 0;
+    this._dt = 1 / 60;
     this.waterPattern = null;
     this.streaks = [];
     this._initStreaks();
@@ -300,11 +366,14 @@
 
   Renderer.prototype.drawSea = function (state) {
     var ctx = this.ctx;
-    var g = ctx.createLinearGradient(0, 0, 0, this.h);
-    g.addColorStop(0, '#0a3a5c');
-    g.addColorStop(0.55, '#0c4568');
-    g.addColorStop(1, '#093250');
-    ctx.fillStyle = g;
+    if (!this._seaGrad || this._seaGradH !== this.h) {
+      var g = ctx.createLinearGradient(0, 0, 0, this.h);
+      g.addColorStop(0, '#0a3a5c');
+      g.addColorStop(0.55, '#0c4568');
+      g.addColorStop(1, '#093250');
+      this._seaGrad = g; this._seaGradH = this.h;
+    }
+    ctx.fillStyle = this._seaGrad;
     ctx.fillRect(0, 0, this.w, this.h);
 
     if (!this.waterPattern) this._buildWaterPattern();
@@ -359,6 +428,14 @@
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
+    // Bucket the strokes by opacity so each bucket is a single path: a few
+    // draw calls instead of one (and a colour parse) per streak.
+    var caps = {}, lines = {}, heads = {};
+    function bucket(map, a) {
+      var q = Math.round(a * 50);
+      return map[q] || (map[q] = []);
+    }
+
     for (var i = 0; i < this.streaks.length; i++) {
       var s = this.streaks[i];
       var travel = (this.time * s.sp * (0.35 + str * 1.15) * 0.16) % 1.3;
@@ -374,35 +451,37 @@
 
       if (s.cap && pow > 0.45) {
         // Whitecaps: short bright dashes across the wind, breaking.
-        ctx.strokeStyle = 'rgba(255,255,255,' + (alpha * 1.3).toFixed(3) + ')';
-        ctx.lineWidth = 2.1;
-        ctx.beginPath();
-        ctx.moveTo(x - sa * 5, y + ca * 5 * TILT);
-        ctx.lineTo(x + sa * 5, y - ca * 5 * TILT);
-        ctx.stroke();
+        bucket(caps, alpha * 1.3).push(x - sa * 5, y + ca * 5 * TILT, x + sa * 5, y - ca * 5 * TILT);
         continue;
       }
 
-      ctx.strokeStyle = 'rgba(214,242,252,' + alpha.toFixed(3) + ')';
-      ctx.lineWidth = 1.3 + 1.0 * pow;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(ex, ey);
-      ctx.stroke();
+      bucket(lines, alpha).push(x, y, ex, ey);
 
       if (s.arrow) {
         // A small chevron at the head, pointing the way the wind blows.
         var hw = 4 + 3 * pow;
         var bx = ex - ca * hw * 1.7, by = ey - sa * hw * 1.7;
-        ctx.strokeStyle = 'rgba(232,250,255,' + (alpha * 1.1).toFixed(3) + ')';
-        ctx.lineWidth = 1.4 + 0.9 * pow;
+        bucket(heads, alpha * 1.1).push(bx - sa * hw, by + ca * hw * TILT, ex, ey, bx + sa * hw, by - ca * hw * TILT);
+      }
+    }
+
+    function flush(map, rgb, width, stride) {
+      ctx.lineWidth = width;
+      for (var q in map) {
+        var seg = map[q];
+        ctx.strokeStyle = 'rgba(' + rgb + ',' + Math.min(1, q / 50).toFixed(3) + ')';
         ctx.beginPath();
-        ctx.moveTo(bx - sa * hw, by + ca * hw * TILT);
-        ctx.lineTo(ex, ey);
-        ctx.lineTo(bx + sa * hw, by - ca * hw * TILT);
+        for (var n = 0; n < seg.length; n += stride) {
+          ctx.moveTo(seg[n], seg[n + 1]);
+          ctx.lineTo(seg[n + 2], seg[n + 3]);
+          if (stride === 6) ctx.lineTo(seg[n + 4], seg[n + 5]);
+        }
         ctx.stroke();
       }
     }
+    flush(caps, '255,255,255', 2.1, 4);
+    flush(lines, '214,242,252', 1.3 + 1.0 * pow, 4);
+    flush(heads, '232,250,255', 1.4 + 0.9 * pow, 6);
 
     ctx.restore();
   };
@@ -470,14 +549,20 @@
     var pulse = 0.5 + 0.5 * Math.sin(this.time * 2.2);
     ctx.save();
     ctx.lineJoin = 'miter';
+    // The glow is a few wide, faint strokes under the line - the same look
+    // as a shadowBlur, without blurring a rectangle the size of the screen.
+    var glowW = [22, 13, 7];
+    var glowA = [0.07, 0.12, 0.2];
+    for (var gI = 0; gI < 3; gI++) {
+      ctx.strokeStyle = 'rgba(255,60,80,' + (glowA[gI] * (0.7 + 0.3 * pulse)).toFixed(3) + ')';
+      ctx.lineWidth = glowW[gI] + 2 * pulse;
+      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    }
     ctx.strokeStyle = 'rgba(255,90,110,' + (0.55 + 0.35 * pulse).toFixed(3) + ')';
     ctx.lineWidth = 3 + 2 * pulse;
-    ctx.shadowColor = 'rgba(255,60,80,0.9)';
-    ctx.shadowBlur = 12;
     ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
 
     // A crawling dashed inner line, so the edge reads even when it is still.
-    ctx.shadowBlur = 0;
     ctx.strokeStyle = 'rgba(255,220,180,0.55)';
     ctx.lineWidth = 1.6;
     ctx.setLineDash([16, 14]);
@@ -494,8 +579,35 @@
       var d = this.decor[i];
       if (d.x < b.x0 || d.x > b.x1 || d.y < b.y0 || d.y > b.y1) continue;
       var x = this.sx(d.x), y = this.sy(d.y, d.e);
-      this.drawProp(ctx, d, x, y, z);
+      if (ANIMATED_PROPS[d.k]) { this.drawProp(ctx, d, x, y, z); continue; }
+      var spr = this.propSprite(d);
+      ctx.drawImage(spr, x + spr._ox * z, y + spr._oy * z, spr._w * z, spr._h * z);
     }
+  };
+
+  // Props with moving parts are drawn live; everything else is a still
+  // picture and is stamped from a cache - a tree is a dozen path
+  // operations, and an island carries dozens of them.
+  var ANIMATED_PROPS = { windmill: true, lighthouse: true };
+  var PROP_RES = 3.2;          // sprite pixels per world unit: sharp to ~1.6x zoom on a 2x screen
+  var PROP_BOX = { x0: -15, y0: -28, x1: 19, y1: 9 };   // in units of the prop's size
+
+  Renderer.prototype.propSprite = function (d) {
+    // Palms differ by the set of their fronds; eight variations is plenty.
+    var rq = d.k === 'palm' ? Math.round(((d.r % TAU) + TAU) % TAU / TAU * 8) % 8 : 0;
+    var key = 'prop:' + d.k + ':' + d.s.toFixed(2) + ':' + rq;
+    var c = spriteCache[key];
+    if (c) return c;
+    var ox = PROP_BOX.x0 * d.s, oy = PROP_BOX.y0 * d.s;
+    var w = (PROP_BOX.x1 - PROP_BOX.x0) * d.s, h = (PROP_BOX.y1 - PROP_BOX.y0) * d.s;
+    c = makeCanvas(w * PROP_RES, h * PROP_RES);
+    var g = c.getContext('2d');
+    g.scale(PROP_RES, PROP_RES);
+    this.drawProp(g, { k: d.k, s: d.s, r: rq / 8 * TAU }, -ox, -oy, 1);
+    c._ox = ox; c._oy = oy; c._w = w; c._h = h;
+    spriteCache[key] = c;
+    spriteCount++;
+    return c;
   };
 
   Renderer.prototype.drawProp = function (ctx, d, x, y, z) {
@@ -726,13 +838,34 @@
       ctx.translate(0, -12 * z);
       var pulse = 1 + Math.sin(this.time * 3 + p.id) * 0.07;
       ctx.scale(pulse, pulse);
-      ctx.shadowColor = look.ring;
-      ctx.shadowBlur = 10 * z;
-      this.drawPowerupIcon(ctx, p.type, z, look);
+      var icon = this.powerupSprite(p.type, look);
+      ctx.drawImage(icon, -ICON_BOX * z, -ICON_BOX * z, ICON_BOX * 2 * z, ICON_BOX * 2 * z);
       ctx.restore();
 
       ctx.restore();
     }
+  };
+
+  // The emblem and its glow, baked once per crate type. A live shadowBlur
+  // on every crate every frame is one of the most expensive things a 2D
+  // canvas can be asked to do.
+  var ICON_BOX = 22;
+
+  Renderer.prototype.powerupSprite = function (type, look) {
+    var key = 'pu:' + type;
+    var c = spriteCache[key];
+    if (c) return c;
+    var px = ICON_BOX * 2 * PROP_RES;
+    c = makeCanvas(px, px);
+    var g = c.getContext('2d');
+    g.translate(px / 2, px / 2);
+    g.scale(PROP_RES, PROP_RES);
+    g.shadowColor = look.ring;
+    g.shadowBlur = 10 * PROP_RES;
+    this.drawPowerupIcon(g, type, 1, look);
+    spriteCache[key] = c;
+    spriteCount++;
+    return c;
   };
 
   Renderer.prototype.drawPowerupIcon = function (ctx, type, z, look) {
@@ -1000,18 +1133,23 @@
         ctx.stroke();
       }
 
-      // The churned water itself, fading as it settles.
-      for (var i3 = 1; i3 < pts.length; i3++) {
-        var a = pts[i3 - 1], b = pts[i3];
-        var age2 = (this.time - b.t) / TRAIL_LIFE;
+      // The churned water itself, fading as it settles. Drawn as a handful
+      // of short polylines rather than one stroke per segment: far fewer
+      // draw calls, and no beading where round caps used to overlap.
+      var CHUNK = 7;
+      for (var c0 = 0; c0 < pts.length - 1; c0 += CHUNK) {
+        var c1 = Math.min(pts.length - 1, c0 + CHUNK);
+        var mid = pts[(c0 + c1) >> 1];
+        var age2 = (this.time - mid.t) / TRAIL_LIFE;
         if (age2 > 1) continue;
         var fade = (1 - age2) * (1 - age2);
-        var speedFrac = clamp((b.sp || 0) / C.BASE_SPEED, 0, 1);
+        var speedFrac = clamp((mid.sp || 0) / C.BASE_SPEED, 0, 1);
         ctx.strokeStyle = 'rgba(214,240,250,' + (0.20 * fade * (0.35 + 0.65 * speedFrac)).toFixed(3) + ')';
         ctx.lineWidth = Math.max(1, (C.SHIP_BEAM * 0.75 + age2 * 34) * z);
+        ctx.lineCap = 'butt';
         ctx.beginPath();
-        ctx.moveTo(this.sx(a.x), this.sy(a.y, 0));
-        ctx.lineTo(this.sx(b.x), this.sy(b.y, 0));
+        ctx.moveTo(this.sx(pts[c0].x), this.sy(pts[c0].y, 0));
+        for (var i3 = c0 + 1; i3 <= c1; i3++) ctx.lineTo(this.sx(pts[i3].x), this.sy(pts[i3].y, 0));
         ctx.stroke();
       }
     }
@@ -1258,10 +1396,20 @@
     ctx.fill();
     ctx.restore();
 
-    if (Math.random() < 0.85) {
-      var bx = s.x - Math.cos(s.angle) * (C.SHIP_HALF_LEN + 6);
-      var by = s.y - Math.sin(s.angle) * (C.SHIP_HALF_LEN + 6);
-      this.particles.burst('splash', bx + rnd(-6, 6), by + rnd(-6, 6));
+    // Spray thrown up astern. Rate-based: it used to fire a whole splash
+    // every frame, which on a fast monitor flooded the particle budget.
+    var bx = s.x - Math.cos(s.angle) * (C.SHIP_HALF_LEN + 6);
+    var by = s.y - Math.sin(s.angle) * (C.SHIP_HALF_LEN + 6);
+    var drops = Math.floor(70 * this._dt + Math.random());
+    for (var d = 0; d < drops; d++) {
+      var a = s.angle + Math.PI + rnd(-0.9, 0.9), sp = rnd(30, 90);
+      this.particles.spawn({
+        t: 'drop', x: bx + rnd(-6, 6), y: by + rnd(-6, 6), vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        life: rnd(0.3, 0.55), max: 0.55, r: rnd(1.3, 2.6), damp: 0.9, z: 0, vz: rnd(30, 70), grav: 160
+      });
+    }
+    if (Math.random() < 6 * this._dt) {
+      this.particles.spawn({ t: 'ring', x: bx, y: by, vx: 0, vy: 0, life: 0.75, max: 0.75, r: 4, damp: 1 });
     }
   };
 
@@ -1459,8 +1607,10 @@
 
       if (p.superShot) {
         ctx.save();
-        ctx.shadowColor = '#ff6b3d';
-        ctx.shadowBlur = 16 * z;
+        ctx.globalCompositeOperation = 'lighter';
+        stamp(ctx, glowSprite('255,107,61'), x, y, r * 5.5, 0.9, 1);
+        ctx.restore();
+        ctx.save();
         ctx.fillStyle = '#ffd08a';
         ctx.beginPath(); ctx.arc(x, y, r * 1.35, 0, TAU); ctx.fill();
         ctx.fillStyle = '#ff7a3c';
@@ -1568,9 +1718,9 @@
       var k = w.t / w.life;
       var x = this.sx(w.x), y = this.sy(w.y, 0);
 
-      if (Math.random() < 0.4) this.particles.burst('bubble', w.x, w.y, { count: 1 });
+      if (Math.random() < 24 * dt) this.particles.burst('bubble', w.x, w.y, { count: 1 });
       // Still burning for the first second or so as she settles.
-      if (k < 0.45 && Math.random() < 0.5) {
+      if (k < 0.45 && Math.random() < 30 * dt) {
         this.particles.spawn({
           t: 'smoke', x: w.x + rnd(-14, 14), y: w.y + rnd(-8, 8),
           vx: rnd(-8, 8), vy: rnd(-8, 8), life: rnd(0.9, 1.8), max: 1.8,
@@ -1594,81 +1744,105 @@
     this.wrecks = out;
   };
 
+  var FIRE_COLS = ['255,86,34', '255,138,44', '255,196,82', '255,232,160'];
+
+  /**
+   * Two passes: everything that sits in the air or on the water is blended
+   * normally, then anything that gives off light - fire, embers, sparks,
+   * the flash - is added on top, so a blast actually glows and brightens
+   * the smoke around it.
+   */
   Renderer.prototype.drawParticles = function () {
     var ctx = this.ctx;
     var z = this.cam.zoom;
     var list = this.particles.list;
+    var w = this.w, h = this.h;
+    var puffCache = {};
+
+    ctx.save();
     for (var i = 0; i < list.length; i++) {
       var p = list[i];
+      var t = p.t;
+      if (t === 'fire' || t === 'ember' || t === 'spark' || t === 'flash') continue;
       var k = p.life / p.max;
       var x = this.sx(p.x), y = this.sy(p.y, 0) - (p.z || 0) * z;
+      if (x < -120 || y < -120 || x > w + 120 || y > h + 120) continue;
 
-      switch (p.t) {
+      switch (t) {
         case 'smoke':
-          ctx.fillStyle = 'rgba(' + p.col + ',' + (0.42 * k).toFixed(3) + ')';
-          ctx.beginPath();
-          ctx.ellipse(x, y, p.r * z * (2.2 - k), p.r * z * (2.2 - k) * TILT, 0, 0, TAU);
-          ctx.fill();
-          break;
-        case 'fire':
-          ctx.fillStyle = 'rgba(255,' + Math.round(90 + 150 * k) + ',40,' + (0.9 * k).toFixed(3) + ')';
-          ctx.beginPath(); ctx.arc(x, y, p.r * z * (0.6 + k), 0, TAU); ctx.fill();
+          var spr = puffCache[p.col] || (puffCache[p.col] = puffSprite(p.col));
+          stamp(ctx, spr, x, y, p.r * z * (2.2 - k) * 1.45, 0.62 * k);
           break;
         case 'drop':
-          ctx.fillStyle = 'rgba(224,244,252,' + (0.9 * k).toFixed(3) + ')';
-          ctx.beginPath(); ctx.arc(x, y, p.r * z, 0, TAU); ctx.fill();
-          break;
-        case 'ring':
-          ctx.strokeStyle = 'rgba(225,245,252,' + (0.7 * k).toFixed(3) + ')';
-          ctx.lineWidth = Math.max(1, 2 * z * k);
-          ctx.beginPath();
-          ctx.ellipse(x, y, (6 + (1 - k) * 34) * z, (6 + (1 - k) * 34) * z * TILT, 0, 0, TAU);
-          ctx.stroke();
-          break;
-        case 'plank':
-          ctx.save();
-          ctx.translate(x, y); ctx.rotate(p.rot); ctx.scale(1, TILT);
-          ctx.fillStyle = 'rgba(' + p.col + ',' + (0.95 * Math.min(1, k * 2)).toFixed(3) + ')';
-          ctx.fillRect(-p.r * z, -p.r * z * 0.34, p.r * 2 * z, p.r * 0.68 * z);
-          ctx.restore();
-          break;
-        case 'bubble':
-          ctx.strokeStyle = 'rgba(210,240,250,' + (0.6 * k).toFixed(3) + ')';
-          ctx.lineWidth = 1;
-          ctx.beginPath(); ctx.ellipse(x, y, p.r * z, p.r * z * TILT, 0, 0, TAU); ctx.stroke();
-          break;
-        case 'spark':
-          ctx.fillStyle = 'rgba(' + p.col + ',' + k.toFixed(3) + ')';
-          ctx.beginPath(); ctx.arc(x, y, p.r * z * k, 0, TAU); ctx.fill();
-          break;
-        case 'flash':
-          var fg = ctx.createRadialGradient(x, y, 0, x, y, p.r * z * (1.6 - k));
-          fg.addColorStop(0, 'rgba(255,248,224,' + (0.92 * k).toFixed(3) + ')');
-          fg.addColorStop(0.45, 'rgba(255,196,96,' + (0.55 * k).toFixed(3) + ')');
-          fg.addColorStop(1, 'rgba(255,140,60,0)');
-          ctx.fillStyle = fg;
-          ctx.beginPath();
-          ctx.ellipse(x, y, p.r * z * (1.6 - k), p.r * z * TILT * (1.6 - k), 0, 0, TAU);
-          ctx.fill();
-          break;
-        case 'shock':
-          ctx.strokeStyle = 'rgba(255,236,200,' + (0.62 * k * k).toFixed(3) + ')';
-          ctx.lineWidth = Math.max(1, 5 * z * k);
-          ctx.beginPath();
-          ctx.ellipse(x, y, (p.r + (1 - k) * 150) * z, (p.r + (1 - k) * 150) * z * TILT, 0, 0, TAU);
-          ctx.stroke();
-          break;
-        case 'ember':
-          ctx.fillStyle = 'rgba(255,' + Math.round(120 + 110 * k) + ',60,' + k.toFixed(3) + ')';
-          ctx.beginPath(); ctx.arc(x, y, p.r * z, 0, TAU); ctx.fill();
+          stamp(ctx, puffSprite('236,248,255'), x, y, p.r * z * 1.7, 0.95 * k, 1);
           break;
         case 'wake':
-          ctx.fillStyle = 'rgba(220,242,250,' + (0.20 * k).toFixed(3) + ')';
-          ctx.beginPath();
-          ctx.ellipse(x, y, p.r * z * (1 + (1 - k) * 1.6), p.r * z * TILT * (1 + (1 - k) * 1.6), 0, 0, TAU);
-          ctx.fill();
+          stamp(ctx, puffSprite('220,242,250'), x, y, p.r * z * (1 + (1 - k) * 1.6) * 1.4, 0.26 * k);
+          break;
+        default:
+          this.drawParticleShape(ctx, p, k, x, y, z);
+      }
+    }
+
+    ctx.globalCompositeOperation = 'lighter';
+    for (var j = 0; j < list.length; j++) {
+      var q = list[j];
+      var tq = q.t;
+      if (tq !== 'fire' && tq !== 'ember' && tq !== 'spark' && tq !== 'flash') continue;
+      var kq = q.life / q.max;
+      var qx = this.sx(q.x), qy = this.sy(q.y, 0) - (q.z || 0) * z;
+      if (qx < -200 || qy < -200 || qx > w + 200 || qy > h + 200) continue;
+
+      switch (tq) {
+        case 'fire':
+          // Cools from white-yellow through orange to a dull red as it dies.
+          var fc = FIRE_COLS[Math.min(3, Math.floor(kq * 4))];
+          stamp(ctx, glowSprite(fc), qx, qy, q.r * z * (0.6 + kq) * 1.9, 0.85 * kq, 1);
+          break;
+        case 'ember':
+          stamp(ctx, glowSprite(kq > 0.5 ? '255,200,90' : '255,120,50'), qx, qy, q.r * z * 2.6, kq, 1);
+          break;
+        case 'spark':
+          stamp(ctx, glowSprite(q.col), qx, qy, q.r * z * kq * 3, kq, 1);
+          break;
+        case 'flash':
+          stamp(ctx, glowSprite('255,190,96'), qx, qy, q.r * z * (1.6 - kq) * 1.25, 0.95 * kq);
           break;
       }
+    }
+    ctx.restore();
+  };
+
+  /** The few particle kinds that are outlines or solid shapes, not puffs. */
+  Renderer.prototype.drawParticleShape = function (ctx, p, k, x, y, z) {
+    ctx.globalAlpha = 1;
+    switch (p.t) {
+      case 'ring':
+        ctx.strokeStyle = 'rgba(225,245,252,' + (0.7 * k).toFixed(3) + ')';
+        ctx.lineWidth = Math.max(1, 2 * z * k);
+        ctx.beginPath();
+        ctx.ellipse(x, y, (6 + (1 - k) * 34) * z, (6 + (1 - k) * 34) * z * TILT, 0, 0, TAU);
+        ctx.stroke();
+        break;
+      case 'plank':
+        ctx.save();
+        ctx.translate(x, y); ctx.rotate(p.rot); ctx.scale(1, TILT);
+        ctx.fillStyle = 'rgba(' + p.col + ',' + (0.95 * Math.min(1, k * 2)).toFixed(3) + ')';
+        ctx.fillRect(-p.r * z, -p.r * z * 0.34, p.r * 2 * z, p.r * 0.68 * z);
+        ctx.restore();
+        break;
+      case 'bubble':
+        ctx.strokeStyle = 'rgba(210,240,250,' + (0.6 * k).toFixed(3) + ')';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.ellipse(x, y, p.r * z, p.r * z * TILT, 0, 0, TAU); ctx.stroke();
+        break;
+      case 'shock':
+        ctx.strokeStyle = 'rgba(255,236,200,' + (0.62 * k * k).toFixed(3) + ')';
+        ctx.lineWidth = Math.max(1, 5 * z * k);
+        ctx.beginPath();
+        ctx.ellipse(x, y, (p.r + (1 - k) * 150) * z, (p.r + (1 - k) * 150) * z * TILT, 0, 0, TAU);
+        ctx.stroke();
+        break;
     }
   };
 
@@ -1678,6 +1852,7 @@
 
   Renderer.prototype.draw = function (state, dt) {
     this.time += dt;
+    this._dt = dt;
     var ctx = this.ctx;
 
     // Camera
